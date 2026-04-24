@@ -232,12 +232,46 @@ export type InterpreterOutput = {
   stderr: string;
 };
 
-export type RunStatus = "done" | "error";
+export type DebugValueView = {
+  name: string;
+  kind: "int" | "bool" | "string" | "array" | "void" | "uninitialized";
+  value: string;
+};
+
+export type ScopeView = {
+  name: string;
+  vars: DebugValueView[];
+};
+
+export type ArrayView = {
+  ref: number;
+  elementType: "int" | "bool" | "string";
+  dynamic: boolean;
+  values: string[];
+};
+
+export type WatchView = {
+  expression: string;
+  value: string;
+};
+
+export type DebugInfo = {
+  currentLine: number;
+  callStack: FrameView[];
+  localVars: ScopeView[];
+  globalVars: DebugValueView[];
+  arrays: ArrayView[];
+  watchList: WatchView[];
+};
+
+export type RunStatus = "done" | "paused" | "error";
 
 export type RunResult = {
   status: RunStatus;
   output: InterpreterOutput;
   error: RuntimeErrorInfo | null;
+  debugInfo: DebugInfo;
+  stepCount: number;
 };
 
 export type FrameView = {
@@ -251,4 +285,10 @@ export type DebugState = {
   callStack: FrameView[];
   output: InterpreterOutput;
   error: RuntimeErrorInfo | null;
+  localVars: ScopeView[];
+  globalVars: DebugValueView[];
+  arrays: ArrayView[];
+  watchList: WatchView[];
+  stepCount: number;
+  pauseReason: "step" | "breakpoint" | null;
 };

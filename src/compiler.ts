@@ -36,6 +36,15 @@ export function compileAndRun(source: string, input = "", filename = "<input>"):
         line: compiled.errors[0]?.line ?? 1,
         functionName: "<compile>",
       },
+      debugInfo: {
+        currentLine: compiled.errors[0]?.line ?? 1,
+        callStack: [],
+        localVars: [],
+        globalVars: [],
+        arrays: [],
+        watchList: [],
+      },
+      stepCount: 0,
     };
   }
   const runResult = runCompiled(compiled.program, input);

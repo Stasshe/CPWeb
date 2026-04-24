@@ -3,10 +3,13 @@ import type { RuntimeValue } from "../runtime/value";
 import { defaultValueForType, stringifyValue, uninitializedForType } from "../runtime/value";
 import type {
   ArrayDeclNode,
+  ArrayView,
   AssignTargetNode,
   BinaryExprNode,
   BlockStmtNode,
   DebugState,
+  DebugInfo,
+  DebugValueView,
   ExprNode,
   FrameView,
   FunctionDeclNode,
@@ -14,6 +17,7 @@ import type {
   ProgramNode,
   RunResult,
   RuntimeErrorInfo,
+  ScopeView,
   StatementNode,
   VectorDeclNode,
 } from "../types";
@@ -30,11 +34,28 @@ type ArrayStore = {
 export type InterpreterStepInfo = {
   line: number;
   callStack: FrameView[];
+  kind: "statement" | "expression";
+  stepCount: number;
+  debugInfo: DebugInfo;
 };
 
 export type InterpreterOptions = {
-  onStep?: (info: InterpreterStepInfo) => void;
+  onStep?: (info: InterpreterStepInfo) => "pause" | void;
 };
+
+class PauseTrap {
+  readonly stepCount: number;
+
+  readonly reason: "step" | "breakpoint";
+
+  readonly debugInfo: DebugInfo;
+
+  constructor(stepCount: number, reason: "step" | "breakpoint", debugInfo: DebugInfo) {
+    this.stepCount = stepCount;
+    this.reason = reason;
+    this.debugInfo = debugInfo;
+  }
+}
 
 export function runProgram(
   program: ProgramNode,
@@ -72,6 +93,8 @@ class Interpreter {
 
   private readonly frameStack: FrameView[] = [];
 
+  private stepCount = 0;
+
   constructor(program: ProgramNode, input: string, options: InterpreterOptions) {
     this.program = program;
     this.options = options;
@@ -104,8 +127,19 @@ class Interpreter {
         status: "done",
         output: this.output,
         error: null,
+        debugInfo: this.buildDebugInfo(),
+        stepCount: this.stepCount,
       };
     } catch (error) {
+      if (error instanceof PauseTrap) {
+        return {
+          status: "paused",
+          output: this.output,
+          error: null,
+          debugInfo: error.debugInfo,
+          stepCount: error.stepCount,
+        };
+      }
       if (error instanceof RuntimeTrap) {
         const runtimeError: RuntimeErrorInfo = {
           message: error.message,
@@ -116,6 +150,8 @@ class Interpreter {
           status: "error",
           output: this.output,
           error: runtimeError,
+          debugInfo: this.buildDebugInfo(),
+          stepCount: this.stepCount,
         };
       }
       throw error;
@@ -201,7 +237,7 @@ class Interpreter {
   }
 
   private executeStatement(stmt: StatementNode): void {
-    this.step(stmt.line);
+    this.step(stmt.line, "statement");
 
     switch (stmt.kind) {
       case "BlockStmt":
@@ -394,7 +430,7 @@ class Interpreter {
   }
 
   private evaluateExpr(expr: ExprNode): RuntimeValue {
-    this.step(expr.line);
+    this.step(expr.line, "expression");
 
     switch (expr.kind) {
       case "Literal":
@@ -953,19 +989,27 @@ class Interpreter {
     return scope;
   }
 
-  private step(line: number): void {
+  private step(line: number, kind: "statement" | "expression"): void {
+    this.stepCount += 1;
     this.currentLine = line;
     const top = this.frameStack[this.frameStack.length - 1];
     if (top !== undefined) {
       top.line = line;
     }
-    this.options.onStep?.({
+    const debugInfo = this.buildDebugInfo();
+    const action = this.options.onStep?.({
       line,
+      kind,
+      stepCount: this.stepCount,
       callStack: this.frameStack.map((frame) => ({
         functionName: frame.functionName,
         line: frame.line,
       })),
+      debugInfo,
     });
+    if (action === "pause") {
+      throw new PauseTrap(this.stepCount, "step", debugInfo);
+    }
   }
 
   private fail(message: string, line: number): never {
@@ -984,19 +1028,73 @@ class Interpreter {
     }
     this.fail("element type cannot be void", line);
   }
+
+  private buildDebugInfo(): DebugInfo {
+    return {
+      currentLine: this.currentLine,
+      callStack: this.frameStack.map((frame) => ({
+        functionName: frame.functionName,
+        line: frame.line,
+      })),
+      localVars: this.scopeStack.map((scope, index) => ({
+        name: `scope#${index}`,
+        vars: this.serializeScope(scope),
+      })),
+      globalVars: this.serializeScope(this.globals),
+      arrays: Array.from(this.arrays.entries()).map(([ref, store]) => ({
+        ref,
+        elementType: store.elementType,
+        dynamic: store.dynamic,
+        values: store.values.map((value) => this.serializeValue(value)),
+      })),
+      watchList: [],
+    };
+  }
+
+  private serializeScope(scope: Scope): DebugValueView[] {
+    return Array.from(scope.entries())
+      .map(([name, value]) => this.serializeNamedValue(name, value))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  private serializeNamedValue(name: string, value: RuntimeValue): DebugValueView {
+    return {
+      name,
+      kind: value.kind,
+      value: this.serializeValue(value),
+    };
+  }
+
+  private serializeValue(value: RuntimeValue): string {
+    switch (value.kind) {
+      case "array":
+        return `<${value.dynamic ? "vector" : "array"}#${value.ref}>`;
+      case "uninitialized":
+        return `<uninitialized:${value.expected}>`;
+      default:
+        return stringifyValue(value);
+    }
+  }
 }
 
 export function buildDebugState(
   result: RunResult,
-  latestLine: number,
-  callStack: FrameView[],
+  pauseReason: "step" | "breakpoint" | null,
+  stepCount: number,
 ): DebugState {
   return {
-    status: result.status === "done" ? "done" : "error",
-    currentLine: latestLine,
-    callStack,
+    status:
+      result.status === "done" ? "done" : result.status === "paused" ? "paused" : "error",
+    currentLine: result.debugInfo.currentLine,
+    callStack: result.debugInfo.callStack,
     output: result.output,
     error: result.error,
+    localVars: result.debugInfo.localVars,
+    globalVars: result.debugInfo.globalVars,
+    arrays: result.debugInfo.arrays,
+    watchList: result.debugInfo.watchList,
+    stepCount,
+    pauseReason,
   };
 }
 

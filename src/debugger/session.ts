@@ -1,15 +1,19 @@
 import { compile, formatCompileErrors } from "../compiler";
 import { buildDebugState, runProgram } from "../interpreter/interpreter";
-import type { DebugState, FrameView, RunResult } from "../types";
+import type { DebugState, RunResult } from "../types";
+
+type ResumeMode =
+  | { kind: "stepInto" }
+  | { kind: "stepOver"; baseDepth: number }
+  | { kind: "stepOut"; baseDepth: number }
+  | { kind: "run"; breakpoints: Set<number> };
 
 export class DebugSession {
   private readonly source: string;
 
   private readonly input: string;
 
-  private latestLine = 1;
-
-  private latestCallStack: FrameView[] = [];
+  private readonly breakpoints = new Set<number>();
 
   private state: DebugState = {
     status: "ready",
@@ -17,6 +21,12 @@ export class DebugSession {
     callStack: [],
     output: { stdout: "", stderr: "" },
     error: null,
+    localVars: [],
+    globalVars: [],
+    arrays: [],
+    watchList: [],
+    stepCount: 0,
+    pauseReason: null,
   };
 
   constructor(source: string, input = "") {
@@ -24,20 +34,34 @@ export class DebugSession {
     this.input = input;
   }
 
+  setBreakpoint(line: number): DebugState {
+    this.breakpoints.add(line);
+    return this.state;
+  }
+
+  removeBreakpoint(line: number): DebugState {
+    this.breakpoints.delete(line);
+    return this.state;
+  }
+
+  listBreakpoints(): number[] {
+    return Array.from(this.breakpoints).sort((left, right) => left - right);
+  }
+
   stepInto(): DebugState {
-    return this.runToEndAsSkeleton();
+    return this.resume({ kind: "stepInto" });
   }
 
   stepOver(): DebugState {
-    return this.runToEndAsSkeleton();
+    return this.resume({ kind: "stepOver", baseDepth: Math.max(1, this.state.callStack.length) });
   }
 
   stepOut(): DebugState {
-    return this.runToEndAsSkeleton();
+    return this.resume({ kind: "stepOut", baseDepth: this.state.callStack.length });
   }
 
   run(): DebugState {
-    return this.runToEndAsSkeleton();
+    return this.resume({ kind: "run", breakpoints: new Set(this.breakpoints) });
   }
 
   pause(): DebugState {
@@ -54,7 +78,7 @@ export class DebugSession {
     return this.state;
   }
 
-  private runToEndAsSkeleton(): DebugState {
+  private resume(mode: ResumeMode): DebugState {
     const compiled = compile(this.source);
     if (!compiled.ok) {
       this.state = {
@@ -67,20 +91,62 @@ export class DebugSession {
           line: compiled.errors[0]?.line ?? 1,
           functionName: "<compile>",
         },
+        localVars: [],
+        globalVars: [],
+        arrays: [],
+        watchList: [],
+        stepCount: 0,
+        pauseReason: null,
       };
       return this.state;
     }
 
-    this.state = { ...this.state, status: "running" };
-
+    const previousStepCount = this.state.stepCount;
+    let pauseReason: "step" | "breakpoint" | null = null;
     const result: RunResult = runProgram(compiled.program, this.input, {
       onStep: (step) => {
-        this.latestLine = step.line;
-        this.latestCallStack = step.callStack;
+        if (step.stepCount <= previousStepCount) {
+          return;
+        }
+
+        if (mode.kind === "run" && step.kind === "statement" && mode.breakpoints.has(step.line)) {
+          pauseReason = "breakpoint";
+          return "pause";
+        }
+
+        if (mode.kind === "stepInto") {
+          pauseReason = "step";
+          return "pause";
+        }
+
+        if (mode.kind === "stepOver") {
+          if (step.callStack.length < mode.baseDepth) {
+            pauseReason = "step";
+            return "pause";
+          }
+          if (step.callStack.length === mode.baseDepth && step.kind === "statement") {
+            pauseReason = "step";
+            return "pause";
+          }
+          return;
+        }
+
+        if (mode.kind !== "stepOut") {
+          return;
+        }
+
+        if (mode.baseDepth <= 1) {
+          return;
+        }
+        if (step.callStack.length < mode.baseDepth) {
+          pauseReason = "step";
+          return "pause";
+        }
+        return;
       },
     });
 
-    this.state = buildDebugState(result, this.latestLine, this.latestCallStack);
+    this.state = buildDebugState(result, pauseReason, result.stepCount);
     return this.state;
   }
 }
