@@ -45,6 +45,10 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
           const value = this.expectInt(this.evaluateExpr(expr.operand), expr.line);
           return { kind: "int", value: -value.value };
         }
+        if (expr.operator === "~") {
+          const value = this.expectInt(this.evaluateExpr(expr.operand), expr.line);
+          return { kind: "int", value: ~value.value };
+        }
 
         if (expr.operand.kind !== "Identifier" && expr.operand.kind !== "IndexExpr") {
           this.fail("increment/decrement target must be a variable", expr.line);
@@ -374,9 +378,26 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
           this.fail("division by zero", expr.line);
         }
         return { kind: "int", value: leftInt.value % rightInt.value };
+      case "<<":
+        return { kind: "int", value: leftInt.value << this.normalizeShiftAmount(rightInt.value, expr.line) };
+      case ">>":
+        return { kind: "int", value: leftInt.value >> this.normalizeShiftAmount(rightInt.value, expr.line) };
+      case "&":
+        return { kind: "int", value: leftInt.value & rightInt.value };
+      case "^":
+        return { kind: "int", value: leftInt.value ^ rightInt.value };
+      case "|":
+        return { kind: "int", value: leftInt.value | rightInt.value };
       default:
         this.fail(`unsupported binary operator '${expr.operator}'`, expr.line);
     }
+  }
+
+  private normalizeShiftAmount(value: bigint, line: number): bigint {
+    if (value < 0n) {
+      this.fail("shift count must be non-negative", line);
+    }
+    return value;
   }
 
   private applyCompoundAssign(

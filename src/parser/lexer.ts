@@ -56,10 +56,14 @@ const ONE_CHAR_SYMBOLS = new Set<string>([
   "*",
   "/",
   "%",
+  "&",
+  "^",
+  "|",
   "<",
   ">",
   "=",
   "!",
+  "~",
 ]);
 
 export type LexResult = { ok: true; tokens: Token[] } | { ok: false; errors: CompileError[] };

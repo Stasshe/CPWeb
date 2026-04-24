@@ -44,6 +44,19 @@ int main() {
     expect(result.error?.message).toMatch(/division by zero/);
   });
 
+  it("negative shift count is runtime error", () => {
+    const source = `
+int main() {
+  int x = 8;
+  cout << (x >> -1) << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("error");
+    expect(result.error?.message).toMatch(/shift count must be non-negative/);
+  });
+
   it("undefined variable error", () => {
     const source = `
 int main() {

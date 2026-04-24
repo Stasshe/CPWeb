@@ -360,7 +360,7 @@ function inferExprType(expr: ExprNode, context: ValidationContext): TypeNode | n
         }
         return { kind: "PrimitiveType", name: "bool" };
       }
-      if (expr.operator === "-") {
+      if (expr.operator === "-" || expr.operator === "~") {
         if (operandType !== null && !isIntType(operandType)) {
           pushError(context, expr.line, expr.col, "type mismatch: expected int");
         }
@@ -418,6 +418,22 @@ function inferBinaryType(
 
   if (expr.operator === "+" && left !== null && right !== null && isStringType(left) && isStringType(right)) {
     return { kind: "PrimitiveType", name: "string" };
+  }
+
+  if (
+    expr.operator === "<<" ||
+    expr.operator === ">>" ||
+    expr.operator === "&" ||
+    expr.operator === "^" ||
+    expr.operator === "|"
+  ) {
+    if (left !== null && !isIntType(left)) {
+      pushError(context, expr.left.line, expr.left.col, "type mismatch: expected int");
+    }
+    if (right !== null && !isIntType(right)) {
+      pushError(context, expr.right.line, expr.right.col, "type mismatch: expected int");
+    }
+    return { kind: "PrimitiveType", name: "int" };
   }
 
   if (left !== null && !isIntType(left)) {

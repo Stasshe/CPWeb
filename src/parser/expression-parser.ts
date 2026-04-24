@@ -2,6 +2,7 @@ import type {
   AssignExprNode,
   BinaryExprNode,
   ExprNode,
+  Token,
   UnaryExprNode,
 } from "../types";
 import { BaseParser, isAssignTarget } from "./base-parser";
@@ -9,6 +10,48 @@ import { BaseParser, isAssignTarget } from "./base-parser";
 export abstract class ExpressionParser extends BaseParser {
   protected parseExpression(): ExprNode {
     return this.parseAssignment();
+  }
+
+  protected parseShiftExprList(symbol: "<<" | ">>", message: string): ExprNode[] | null {
+    const values: ExprNode[] = [];
+    if (!this.consumeSymbol(symbol, message || `expected '${symbol}'`)) {
+      return null;
+    }
+
+    while (true) {
+      const endIndex = this.findStreamOperandEnd(symbol);
+      if (endIndex === this.index) {
+        this.errorAtCurrent(`expected expression after '${symbol}'`);
+        return null;
+      }
+
+      const segment = this.tokens.slice(this.index, endIndex);
+      const eof =
+        this.tokens[endIndex] ??
+        this.tokens[this.tokens.length - 1] ?? {
+          kind: "eof" as const,
+          text: "<eof>",
+          line: 1,
+          col: 1,
+        };
+      const segmentParser = new StreamOperandParser([
+        ...segment,
+        { kind: "eof", text: "<eof>", line: eof.line, col: eof.col },
+      ]);
+      const parsed = segmentParser.parseOperand();
+      if (parsed === null) {
+        this.errors.push(...segmentParser.getErrors());
+        return null;
+      }
+
+      values.push(parsed);
+      this.index = endIndex;
+      if (!this.matchSymbol(symbol)) {
+        break;
+      }
+    }
+
+    return values;
   }
 
   private parseAssignment(): ExprNode {
@@ -38,7 +81,19 @@ export abstract class ExpressionParser extends BaseParser {
   }
 
   private parseLogicalAnd(): ExprNode {
-    return this.parseLeftAssociative(() => this.parseEquality(), ["&&"]);
+    return this.parseLeftAssociative(() => this.parseBitwiseOr(), ["&&"]);
+  }
+
+  private parseBitwiseOr(): ExprNode {
+    return this.parseLeftAssociative(() => this.parseBitwiseXor(), ["|"]);
+  }
+
+  private parseBitwiseXor(): ExprNode {
+    return this.parseLeftAssociative(() => this.parseBitwiseAnd(), ["^"]);
+  }
+
+  private parseBitwiseAnd(): ExprNode {
+    return this.parseLeftAssociative(() => this.parseEquality(), ["&"]);
   }
 
   private parseEquality(): ExprNode {
@@ -46,7 +101,11 @@ export abstract class ExpressionParser extends BaseParser {
   }
 
   private parseRelational(): ExprNode {
-    return this.parseLeftAssociative(() => this.parseAdditive(), ["<", "<=", ">", ">="]);
+    return this.parseLeftAssociative(() => this.parseShift(), ["<", "<=", ">", ">="]);
+  }
+
+  private parseShift(): ExprNode {
+    return this.parseLeftAssociative(() => this.parseAdditive(), ["<<", ">>"]);
   }
 
   private parseAdditive(): ExprNode {
@@ -58,7 +117,7 @@ export abstract class ExpressionParser extends BaseParser {
   }
 
   private parseUnary(): ExprNode {
-    if (this.matchAnySymbol(["!", "-", "++", "--"])) {
+    if (this.matchAnySymbol(["!", "-", "~", "++", "--"])) {
       const op = this.previous();
       const operand = this.parseUnary();
       const node: UnaryExprNode = {
@@ -298,5 +357,47 @@ export abstract class ExpressionParser extends BaseParser {
       };
     }
     return expr;
+  }
+
+  private findStreamOperandEnd(symbol: "<<" | ">>"): number {
+    let depth = 0;
+    let cursor = this.index;
+
+    while (cursor < this.tokens.length) {
+      const token = this.tokens[cursor];
+      if (token === undefined || token.kind === "eof") {
+        return cursor;
+      }
+      if (token.kind === "symbol") {
+        if (token.text === "(" || token.text === "[") {
+          depth += 1;
+        } else if (token.text === ")" || token.text === "]") {
+          depth = Math.max(0, depth - 1);
+        } else if (depth === 0 && (token.text === symbol || token.text === ";")) {
+          return cursor;
+        }
+      }
+      cursor += 1;
+    }
+
+    return cursor;
+  }
+}
+
+class StreamOperandParser extends ExpressionParser {
+  parseOperand(): ExprNode | null {
+    const expr = this.parseExpression();
+    if (this.errors.length > 0) {
+      return null;
+    }
+    if (!this.isAtEnd()) {
+      this.errorAtCurrent("unexpected token in expression");
+      return null;
+    }
+    return expr;
+  }
+
+  getErrors() {
+    return this.errors;
   }
 }

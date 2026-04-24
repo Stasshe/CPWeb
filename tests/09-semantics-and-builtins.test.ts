@@ -144,4 +144,16 @@ int main() {
     expect(result.status).toBe("error");
     expect(result.error?.message).toMatch(/unsupported sort comparator/);
   });
+
+  it("bitwise operators require int operands", () => {
+    const source = `
+int main() {
+  bool flag = true;
+  return flag & 1;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("error");
+    expect(result.error?.message).toMatch(/type mismatch: expected int/);
+  });
 });

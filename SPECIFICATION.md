@@ -24,7 +24,6 @@
 | 関数ポインタ | |
 | 名前空間（`namespace`） | `using namespace std;` のみ特別扱いで許可 |
 | プリプロセッサ（`#include`, `#define` 等） | 将来対応予定 |
-| ビット演算子（`&`, `|`, `^`, `~`, `<<`, `>>`） | 将来対応候補 |
 | キャスト構文（`(int)x`, `static_cast<>` 等） | |
 | 三項演算子（`? :`） | 将来対応候補 |
 | 多重戻り値・タプル | |
@@ -154,6 +153,12 @@ int main() {
 | `*` | 乗算 | |
 | `/` | 除算 | 整数除算（切り捨て）。ゼロ除算は実行時エラー |
 | `%` | 剰余 | ゼロ除算は実行時エラー |
+| `<<` | 左シフト | シフト数が負なら実行時エラー |
+| `>>` | 右シフト | シフト数が負なら実行時エラー |
+| `&` | bit AND | `int` 同士のみ |
+| `^` | bit XOR | `int` 同士のみ |
+| `\|` | bit OR | `int` 同士のみ |
+| `~` | bit NOT | 単項演算子 |
 
 ### 5.2 比較演算子
 
@@ -191,14 +196,18 @@ C++ の標準的な優先順位に準拠する。高い順に：
 
 ```
 1. 後置: i++, i--, v[i], f()
-2. 前置: ++i, --i, !, -(単項)
+2. 前置: ++i, --i, !, ~, -(単項)
 3. 乗除: * / %
 4. 加減: + -
-5. 比較: < <= > >=
-6. 等値: == !=
-7. 論理AND: &&
-8. 論理OR: ||
-9. 代入: = += -= *= /= %=
+5. シフト: << >>
+6. 比較: < <= > >=
+7. 等値: == !=
+8. bit AND: &
+9. bit XOR: ^
+10. bit OR: |
+11. 論理AND: &&
+12. 論理OR: ||
+13. 代入: = += -= *= /= %=
 ```
 
 ---
@@ -576,12 +585,16 @@ assign_expr   = lvalue assign_op expr
               | logical_or ;
 assign_op     = "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 logical_or    = logical_and { "||" logical_and } ;
-logical_and   = equality { "&&" equality } ;
+logical_and   = bitwise_or { "&&" bitwise_or } ;
+bitwise_or    = bitwise_xor { "|" bitwise_xor } ;
+bitwise_xor   = bitwise_and { "^" bitwise_and } ;
+bitwise_and   = equality { "&" equality } ;
 equality      = relational { ( "==" | "!=" ) relational } ;
-relational    = additive { ( "<" | "<=" | ">" | ">=" ) additive } ;
+relational    = shift { ( "<" | "<=" | ">" | ">=" ) shift } ;
+shift         = additive { ( "<<" | ">>" ) additive } ;
 additive      = multiplicative { ( "+" | "-" ) multiplicative } ;
 multiplicative = unary { ( "*" | "/" | "%" ) unary } ;
-unary         = ( "!" | "-" | "++" | "--" ) unary
+unary         = ( "!" | "-" | "~" | "++" | "--" ) unary
               | postfix_expr ;
 postfix_expr  = primary { postfix_op } ;
 postfix_op    = "++" | "--"

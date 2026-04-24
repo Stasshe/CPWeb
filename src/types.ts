@@ -181,6 +181,11 @@ export type BinaryExprNode = NodeBase & {
     | "*"
     | "/"
     | "%"
+    | "<<"
+    | ">>"
+    | "&"
+    | "^"
+    | "|"
     | "<"
     | "<="
     | ">"
@@ -195,7 +200,7 @@ export type BinaryExprNode = NodeBase & {
 
 export type UnaryExprNode = NodeBase & {
   kind: "UnaryExpr";
-  operator: "!" | "-" | "++" | "--";
+  operator: "!" | "-" | "~" | "++" | "--";
   operand: ExprNode;
   isPostfix: boolean;
 };

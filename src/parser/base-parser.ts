@@ -30,6 +30,7 @@ export abstract class BaseParser {
   }
 
   protected abstract parseExpression(): ExprNode;
+  protected abstract parseShiftExprList(symbol: "<<" | ">>", message: string): ExprNode[] | null;
 
   protected parseParams(): FunctionDeclNode["params"] {
     const params: FunctionDeclNode["params"] = [];
@@ -309,20 +310,17 @@ export abstract class BaseParser {
 
     if (this.matchKeyword("cin")) {
       const token = this.previous();
-      const targets: AssignTargetNode[] = [];
-      if (!this.consumeSymbol(">>", "expected '>>' in cin statement")) {
+      const parsedTargets = this.parseShiftExprList(">>", "expected '>>' in cin statement");
+      if (parsedTargets === null) {
         return null;
       }
-      while (true) {
-        const expr = this.parseExpression();
+      const targets: AssignTargetNode[] = [];
+      for (const expr of parsedTargets) {
         if (!isAssignTarget(expr)) {
           this.errorAtCurrent("cin target must be an lvalue");
           return null;
         }
         targets.push(expr);
-        if (!this.matchSymbol(">>")) {
-          break;
-        }
       }
       if (!this.consumeSymbol(";", "expected ';' after cin statement")) {
         return null;
@@ -578,20 +576,6 @@ export abstract class BaseParser {
       line: nameToken.line,
       col: nameToken.col,
     };
-  }
-
-  protected parseShiftExprList(symbol: "<<" | ">>", message: string): ExprNode[] | null {
-    const values: ExprNode[] = [];
-    if (!this.consumeSymbol(symbol, message || `expected '${symbol}'`)) {
-      return null;
-    }
-    while (true) {
-      values.push(this.parseExpression());
-      if (!this.matchSymbol(symbol)) {
-        break;
-      }
-    }
-    return values;
   }
 
   protected parseType(): TypeNode | null {

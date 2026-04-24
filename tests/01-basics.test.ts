@@ -73,6 +73,26 @@ int main() {
     expect(result.output.stdout).toBe("16\n80\n5\n0\n");
   });
 
+  it("bitwise operators and precedence", () => {
+    const source = `
+int main() {
+  int a = 6;
+  int b = 3;
+  cout << (a & b) << "\\n";
+  cout << (a | b) << "\\n";
+  cout << (a ^ b) << "\\n";
+  cout << (~a) << "\\n";
+  cout << (1 << 2 + 1) << "\\n";
+  cout << (32 >> 2 + 1) << "\\n";
+  cout << ((1 | 2) == 3 && false) << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("2\n7\n5\n-7\n8\n4\n0\n");
+  });
+
   it("cout with multiple expressions", () => {
     const source = `
 int main() {
