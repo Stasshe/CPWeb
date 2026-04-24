@@ -16,7 +16,7 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { cpp } from "@codemirror/lang-cpp";
-import { bracketMatching, foldGutter, indentOnInput } from "@codemirror/language";
+import { bracketMatching, foldGutter, indentOnInput, indentUnit } from "@codemirror/language";
 import {
   gotoLine,
   highlightSelectionMatches,
@@ -249,6 +249,12 @@ const editorTheme = EditorView.theme({
   ".cm-content": {
     padding: "0 0 24px",
   },
+  ".cm-selectionBackground, ::selection": {
+    backgroundColor: "rgba(190, 255, 110, 0.34) !important",
+  },
+  ".cm-selectionMatch-main": {
+    backgroundColor: "rgba(190, 255, 110, 0.22)",
+  },
   ".cm-line": {
     padding: "0 12px",
   },
@@ -263,7 +269,7 @@ const editorTheme = EditorView.theme({
     minWidth: "28px",
   },
   ".cm-breakpoint-gutter": {
-    width: "20px",
+    width: "28px",
   },
   ".cm-execution-gutter": {
     width: "14px",
@@ -273,6 +279,12 @@ const editorTheme = EditorView.theme({
     alignItems: "center",
     justifyContent: "center",
     padding: 0,
+  },
+  ".cm-breakpoint-gutter .cm-gutterElement": {
+    cursor: "pointer",
+  },
+  ".cm-breakpoint-gutter .cm-gutterElement:hover": {
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
   },
   ".cm-breakpoint-marker": {
     width: "8px",
@@ -422,6 +434,7 @@ export function Playground() {
       doc: source,
       extensions: [
         EditorState.allowMultipleSelections.of(true),
+        EditorState.tabSize.of(4),
         EditorView.clickAddsSelectionRange.of((event) => event.altKey),
         lineNumbers(),
         foldGutter(),
@@ -431,6 +444,7 @@ export function Playground() {
         crosshairCursor({ key: "Shift" }),
         rectangularSelection({ eventFilter: (event) => event.altKey && event.shiftKey }),
         cpp(),
+        indentUnit.of("    "),
         history(),
         indentOnInput(),
         bracketMatching(),
