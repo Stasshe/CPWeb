@@ -1,22 +1,43 @@
 import { BreakSignal, ContinueSignal, ReturnSignal, RuntimeTrap } from "../runtime/errors";
 import { defaultValueForType, stringifyValue, uninitializedForType } from "../runtime/value";
 import type {
+  ArrayDeclNode,
+  AssignTargetNode,
   BinaryExprNode,
   BlockStmtNode,
+  DebugState,
   ExprNode,
+  FrameView,
   FunctionDeclNode,
   PrimitiveTypeName,
   ProgramNode,
   RunResult,
   RuntimeErrorInfo,
   StatementNode,
+  VectorDeclNode,
 } from "../types";
 import type { RuntimeValue } from "../runtime/value";
 
 type Scope = Map<string, RuntimeValue>;
+type PrimitiveElementType = "int" | "bool" | "string";
 
-export function runProgram(program: ProgramNode, input: string): RunResult {
-  const runner = new Interpreter(program, input);
+type ArrayStore = {
+  elementType: PrimitiveElementType;
+  values: RuntimeValue[];
+  dynamic: boolean;
+};
+
+export type InterpreterStepInfo = {
+  line: number;
+  callStack: FrameView[];
+};
+
+export type InterpreterOptions = {
+  onStep?: (info: InterpreterStepInfo) => void;
+};
+
+export function runProgram(program: ProgramNode, input: string, options: InterpreterOptions = {}): RunResult {
+  const runner = new Interpreter(program, input, options);
   return runner.run();
 }
 
@@ -24,6 +45,8 @@ class Interpreter {
   private readonly program: ProgramNode;
 
   private readonly inputTokens: string[];
+
+  private readonly options: InterpreterOptions;
 
   private inputIndex = 0;
 
@@ -33,14 +56,21 @@ class Interpreter {
 
   private readonly output = { stdout: "", stderr: "" };
 
+  private readonly arrays = new Map<number, ArrayStore>();
+
+  private nextArrayRef = 1;
+
   private currentFunction = "<global>";
 
   private currentLine = 1;
 
   private readonly scopeStack: Scope[] = [];
 
-  constructor(program: ProgramNode, input: string) {
+  private readonly frameStack: FrameView[] = [];
+
+  constructor(program: ProgramNode, input: string, options: InterpreterOptions) {
     this.program = program;
+    this.options = options;
     this.inputTokens = input
       .split(/\s+/)
       .map((v) => v.trim())
@@ -51,17 +81,13 @@ class Interpreter {
     try {
       for (const fn of this.program.functions) {
         if (this.functions.has(fn.name)) {
-          this.fail(`function '${fn.name}' redefinition`, fn.line);
+          this.fail(`redefinition of function '${fn.name}'`, fn.line);
         }
         this.functions.set(fn.name, fn);
       }
 
-      for (const globalDecl of this.program.globals) {
-        const value =
-          globalDecl.initializer === null
-            ? defaultValueForType(globalDecl.typeName)
-            : this.evaluateExpr(globalDecl.initializer);
-        this.globals.set(globalDecl.name, this.assertType(globalDecl.typeName, value, globalDecl.line));
+      for (const decl of this.program.globals) {
+        this.declareGlobal(decl);
       }
 
       const main = this.functions.get("main");
@@ -92,27 +118,44 @@ class Interpreter {
     }
   }
 
+  private declareGlobal(decl: ProgramNode["globals"][number]): void {
+    if (decl.kind === "VarDecl") {
+      const value =
+        decl.initializer === null
+          ? defaultValueForType(decl.typeName)
+          : this.evaluateExpr(decl.initializer);
+      this.globals.set(decl.name, this.assertPrimitiveType(decl.typeName, value, decl.line));
+      return;
+    }
+
+    if (decl.kind === "ArrayDecl") {
+      this.defineArrayDecl(decl, this.globals);
+      return;
+    }
+
+    this.defineVectorDecl(decl, this.globals);
+  }
+
   private invokeFunction(fn: FunctionDeclNode, args: RuntimeValue[]): RuntimeValue {
     const previousFunction = this.currentFunction;
     const previousLine = this.currentLine;
     this.currentFunction = fn.name;
     this.currentLine = fn.line;
 
+    this.frameStack.push({ functionName: fn.name, line: fn.line });
+
     if (fn.params.length !== args.length) {
-      this.fail(`argument count mismatch for function '${fn.name}'`, fn.line);
+      this.fail(`too few arguments to function '${fn.name}'`, fn.line);
     }
 
     this.scopeStack.push(new Map());
     for (let i = 0; i < fn.params.length; i += 1) {
       const param = fn.params[i];
-      if (param === undefined) {
-        this.fail("internal parameter error", fn.line);
-      }
       const arg = args[i];
-      if (arg === undefined) {
+      if (param === undefined || arg === undefined) {
         this.fail(`too few arguments to function '${fn.name}'`, fn.line);
       }
-      this.define(param.name, this.assertType(param.typeName, arg, param.line));
+      this.define(param.name, this.assertPrimitiveType(param.typeName, arg, param.line));
     }
 
     try {
@@ -128,10 +171,11 @@ class Interpreter {
         if (fn.returnType === "void") {
           return { kind: "void" };
         }
-        return this.assertType(fn.returnType, signal.value, fn.line);
+        return this.assertPrimitiveType(fn.returnType, signal.value, fn.line);
       }
       throw signal;
     } finally {
+      this.frameStack.pop();
       this.currentFunction = previousFunction;
       this.currentLine = previousLine;
     }
@@ -153,7 +197,8 @@ class Interpreter {
   }
 
   private executeStatement(stmt: StatementNode): void {
-    this.currentLine = stmt.line;
+    this.step(stmt.line);
+
     switch (stmt.kind) {
       case "BlockStmt":
         this.executeBlock(stmt, true);
@@ -162,10 +207,16 @@ class Interpreter {
         const value =
           stmt.initializer === null
             ? uninitializedForType(stmt.typeName)
-            : this.assertType(stmt.typeName, this.evaluateExpr(stmt.initializer), stmt.line);
+            : this.assertPrimitiveType(stmt.typeName, this.evaluateExpr(stmt.initializer), stmt.line);
         this.define(stmt.name, value);
         return;
       }
+      case "ArrayDecl":
+        this.defineArrayDecl(stmt, this.currentScope());
+        return;
+      case "VectorDecl":
+        this.defineVectorDecl(stmt, this.currentScope());
+        return;
       case "IfStmt": {
         for (const branch of stmt.branches) {
           const condition = this.evaluateExpr(branch.condition);
@@ -203,10 +254,10 @@ class Interpreter {
             const value =
               initDecl.initializer === null
                 ? uninitializedForType(initDecl.typeName)
-                : this.assertType(
+                : this.assertPrimitiveType(
                     initDecl.typeName,
                     this.evaluateExpr(initDecl.initializer),
-                    initDecl.initializer.line,
+                    initDecl.line,
                   );
             this.define(initDecl.name, value);
           } else if (stmt.init.kind === "expr") {
@@ -242,7 +293,7 @@ class Interpreter {
         return;
       }
       case "ReturnStmt": {
-        const value = stmt.value === null ? { kind: "void" as const } : this.evaluateExpr(stmt.value);
+        const value = stmt.value === null ? ({ kind: "void" } as RuntimeValue) : this.evaluateExpr(stmt.value);
         throw new ReturnSignal(value);
       }
       case "BreakStmt":
@@ -271,37 +322,65 @@ class Interpreter {
             this.fail("input exhausted", stmt.line);
           }
           this.inputIndex += 1;
-          const current = this.resolve(target.name, target.line);
-          if (current.kind === "int") {
-            this.assign(target.name, { kind: "int", value: BigInt(token) }, target.line);
-          } else if (current.kind === "bool") {
-            if (token !== "0" && token !== "1") {
-              this.fail(`cannot convert '${token}' to bool`, target.line);
-            }
-            this.assign(target.name, { kind: "bool", value: token === "1" }, target.line);
-          } else if (current.kind === "string") {
-            this.assign(target.name, { kind: "string", value: token }, target.line);
-          } else if (current.kind === "uninitialized") {
-            if (current.expected === "int") {
-              this.assign(target.name, { kind: "int", value: BigInt(token) }, target.line);
-            } else if (current.expected === "bool") {
-              if (token !== "0" && token !== "1") {
-                this.fail(`cannot convert '${token}' to bool`, target.line);
-              }
-              this.assign(target.name, { kind: "bool", value: token === "1" }, target.line);
-            } else {
-              this.assign(target.name, { kind: "string", value: token }, target.line);
-            }
-          } else {
-            this.fail("invalid cin target", target.line);
-          }
+          this.assignFromInput(target, token, stmt.line);
         }
         return;
     }
   }
 
+  private defineArrayDecl(decl: ArrayDeclNode, scope: Scope): void {
+    if (decl.size < 0n) {
+      this.fail("array size must be non-negative", decl.line);
+    }
+
+    const sizeAsNumber = Number(decl.size);
+    const elementType = this.toElementType(decl.elementType, decl.line);
+    const values = Array.from({ length: sizeAsNumber }, () => this.defaultPrimitiveValue(elementType));
+
+    for (let i = 0; i < decl.initializers.length; i += 1) {
+      if (i >= values.length) {
+        this.fail("too many initializers for array", decl.line);
+      }
+      const init = decl.initializers[i];
+      if (init === undefined) {
+        continue;
+      }
+      values[i] = this.castToElementType(this.evaluateExpr(init), elementType, init.line);
+    }
+
+    const arrayValue = this.allocateArray(elementType, false, values);
+    this.defineInScope(scope, decl.name, arrayValue, decl.line);
+  }
+
+  private defineVectorDecl(decl: VectorDeclNode, scope: Scope): void {
+    const elementType = this.toElementType(decl.elementType, decl.line);
+    const args = decl.constructorArgs.map((arg) => this.evaluateExpr(arg));
+    let values: RuntimeValue[] = [];
+
+    if (args.length === 1) {
+      const size = this.expectInt(args[0] as RuntimeValue, decl.line).value;
+      if (size < 0n) {
+        this.fail("vector size must be non-negative", decl.line);
+      }
+      values = Array.from({ length: Number(size) }, () => this.defaultPrimitiveValue(elementType));
+    } else if (args.length === 2) {
+      const size = this.expectInt(args[0] as RuntimeValue, decl.line).value;
+      if (size < 0n) {
+        this.fail("vector size must be non-negative", decl.line);
+      }
+      const fillValue = this.castToElementType(args[1] as RuntimeValue, elementType, decl.line);
+      values = Array.from({ length: Number(size) }, () => fillValue);
+    } else if (args.length > 2) {
+      this.fail("too many arguments for vector constructor", decl.line);
+    }
+
+    const vectorValue = this.allocateArray(elementType, true, values);
+    this.defineInScope(scope, decl.name, vectorValue, decl.line);
+  }
+
   private evaluateExpr(expr: ExprNode): RuntimeValue {
-    this.currentLine = expr.line;
+    this.step(expr.line);
+
     switch (expr.kind) {
       case "Literal":
         if (expr.valueType === "int") {
@@ -312,11 +391,11 @@ class Interpreter {
         }
         return { kind: "string", value: expr.value as string };
       case "Identifier":
-        return this.resolve(expr.name, expr.line);
-      case "CallExpr": {
-        if (expr.callee === "endl") {
+        if (expr.name === "endl") {
           return { kind: "string", value: "\n" };
         }
+        return this.resolve(expr.name, expr.line);
+      case "CallExpr": {
         const fn = this.functions.get(expr.callee);
         if (fn === undefined) {
           this.fail(`'${expr.callee}' was not declared in this scope`, expr.line);
@@ -324,6 +403,10 @@ class Interpreter {
         const argValues = expr.args.map((arg) => this.evaluateExpr(arg));
         return this.invokeFunction(fn, argValues);
       }
+      case "MethodCallExpr":
+        return this.evaluateMethodCall(expr.receiver, expr.method, expr.args, expr.line);
+      case "IndexExpr":
+        return this.getIndexedValue(expr.target, expr.index, expr.line);
       case "UnaryExpr": {
         if (expr.operator === "!") {
           const value = this.expectBool(this.evaluateExpr(expr.operand), expr.line);
@@ -333,34 +416,169 @@ class Interpreter {
           const value = this.expectInt(this.evaluateExpr(expr.operand), expr.line);
           return { kind: "int", value: -value.value };
         }
+
         if (expr.operand.kind !== "Identifier") {
           this.fail("increment/decrement target must be a variable", expr.line);
         }
         const current = this.expectInt(this.resolve(expr.operand.name, expr.line), expr.line);
         const delta = expr.operator === "++" ? 1n : -1n;
-        const updated = { kind: "int" as const, value: current.value + delta };
+        const updated: RuntimeValue = { kind: "int", value: current.value + delta };
         this.assign(expr.operand.name, updated, expr.line);
         return expr.isPostfix ? current : updated;
       }
       case "BinaryExpr":
         return this.evaluateBinary(expr);
       case "AssignExpr": {
-        const current = this.resolve(expr.target.name, expr.line);
-        const rightValue = this.ensureInitialized(this.evaluateExpr(expr.value), expr.line, expr.target.name);
-
-        if (expr.operator === "=") {
-          const assigned = this.assignWithCurrentType(current, rightValue, expr.line);
+        const rightValue = this.ensureInitialized(this.evaluateExpr(expr.value), expr.line, "rhs");
+        if (expr.target.kind === "Identifier") {
+          const current = this.resolve(expr.target.name, expr.line);
+          const assigned = this.resolveAssignedValue(expr.operator, current, rightValue, expr.line);
           this.assign(expr.target.name, assigned, expr.line);
           return assigned;
         }
 
-        const left = this.expectInt(current, expr.line);
-        const right = this.expectInt(rightValue, expr.line);
-        const assigned = this.applyCompoundAssign(expr.operator, left.value, right.value, expr.line);
-        this.assign(expr.target.name, assigned, expr.line);
+        const currentIndexValue = this.getIndexedValue(expr.target.target, expr.target.index, expr.line);
+        const assigned = this.resolveAssignedValue(expr.operator, currentIndexValue, rightValue, expr.line);
+        this.setIndexedValue(expr.target.target, expr.target.index, assigned, expr.line);
         return assigned;
       }
     }
+  }
+
+  private resolveAssignedValue(
+    operator: "=" | "+=" | "-=" | "*=" | "/=" | "%=",
+    current: RuntimeValue,
+    rightValue: RuntimeValue,
+    line: number,
+  ): RuntimeValue {
+    if (operator === "=") {
+      return this.assignWithCurrentType(current, rightValue, line);
+    }
+    const left = this.expectInt(current, line);
+    const right = this.expectInt(rightValue, line);
+    return this.applyCompoundAssign(operator, left.value, right.value, line);
+  }
+
+  private evaluateMethodCall(
+    receiverExpr: ExprNode,
+    method: string,
+    args: ExprNode[],
+    line: number,
+  ): RuntimeValue {
+    const receiver = this.evaluateExpr(receiverExpr);
+    const arrayValue = this.expectArray(receiver, line);
+    const store = this.arrays.get(arrayValue.ref);
+    if (store === undefined) {
+      this.fail("invalid array reference", line);
+    }
+    if (!store.dynamic) {
+      this.fail(`method '${method}' is not supported for fixed array`, line);
+    }
+
+    if (method === "push_back") {
+      if (args.length !== 1) {
+        this.fail("push_back requires exactly 1 argument", line);
+      }
+      const value = this.castToElementType(this.evaluateExpr(args[0] as ExprNode), store.elementType, line);
+      store.values.push(value);
+      return { kind: "void" };
+    }
+
+    if (method === "pop_back") {
+      if (args.length !== 0) {
+        this.fail("pop_back requires no arguments", line);
+      }
+      if (store.values.length === 0) {
+        this.fail("pop_back on empty vector", line);
+      }
+      store.values.pop();
+      return { kind: "void" };
+    }
+
+    if (method === "size") {
+      if (args.length !== 0) {
+        this.fail("size requires no arguments", line);
+      }
+      return { kind: "int", value: BigInt(store.values.length) };
+    }
+
+    if (method === "back") {
+      if (args.length !== 0) {
+        this.fail("back requires no arguments", line);
+      }
+      const last = store.values[store.values.length - 1];
+      if (last === undefined) {
+        this.fail("back on empty vector", line);
+      }
+      return last;
+    }
+
+    if (method === "empty") {
+      if (args.length !== 0) {
+        this.fail("empty requires no arguments", line);
+      }
+      return { kind: "bool", value: store.values.length === 0 };
+    }
+
+    if (method === "clear") {
+      if (args.length !== 0) {
+        this.fail("clear requires no arguments", line);
+      }
+      store.values = [];
+      return { kind: "void" };
+    }
+
+    if (method === "resize") {
+      if (args.length !== 1) {
+        this.fail("resize requires exactly 1 argument", line);
+      }
+      const newSize = this.expectInt(this.evaluateExpr(args[0] as ExprNode), line).value;
+      if (newSize < 0n) {
+        this.fail("resize size must be non-negative", line);
+      }
+      const targetSize = Number(newSize);
+      if (targetSize < store.values.length) {
+        store.values = store.values.slice(0, targetSize);
+      } else {
+        while (store.values.length < targetSize) {
+          store.values.push(this.defaultPrimitiveValue(store.elementType));
+        }
+      }
+      return { kind: "void" };
+    }
+
+    this.fail(`unknown vector method '${method}'`, line);
+  }
+
+  private getIndexedValue(targetExpr: ExprNode, indexExpr: ExprNode, line: number): RuntimeValue {
+    const target = this.expectArray(this.evaluateExpr(targetExpr), line);
+    const index = this.expectInt(this.evaluateExpr(indexExpr), line).value;
+    const store = this.arrays.get(target.ref);
+    if (store === undefined) {
+      this.fail("invalid array reference", line);
+    }
+    if (index < 0n || index >= BigInt(store.values.length)) {
+      this.fail(`index ${index.toString()} out of range for array of size ${store.values.length}`, line);
+    }
+    const value = store.values[Number(index)];
+    if (value === undefined) {
+      this.fail("invalid index access", line);
+    }
+    return value;
+  }
+
+  private setIndexedValue(targetExpr: ExprNode, indexExpr: ExprNode, value: RuntimeValue, line: number): void {
+    const target = this.expectArray(this.evaluateExpr(targetExpr), line);
+    const index = this.expectInt(this.evaluateExpr(indexExpr), line).value;
+    const store = this.arrays.get(target.ref);
+    if (store === undefined) {
+      this.fail("invalid array reference", line);
+    }
+    if (index < 0n || index >= BigInt(store.values.length)) {
+      this.fail(`index ${index.toString()} out of range for array of size ${store.values.length}`, line);
+    }
+    const assigned = this.castToElementType(value, store.elementType, line);
+    store.values[Number(index)] = assigned;
   }
 
   private evaluateBinary(expr: BinaryExprNode): RuntimeValue {
@@ -464,6 +682,9 @@ class Interpreter {
       }
       return value;
     }
+    if (current.kind === "array") {
+      this.fail("cannot assign to array value directly", line);
+    }
     if (current.kind !== value.kind) {
       this.fail(`cannot assign '${value.kind}' to '${current.kind}'`, line);
     }
@@ -486,7 +707,22 @@ class Interpreter {
     return initialized;
   }
 
-  private ensureInitialized(value: RuntimeValue, line: number, name: string): Exclude<RuntimeValue, { kind: "uninitialized" }> {
+  private expectArray(
+    value: RuntimeValue,
+    line: number,
+  ): Extract<RuntimeValue, { kind: "array" }> {
+    const initialized = this.ensureInitialized(value, line, "value");
+    if (initialized.kind !== "array") {
+      this.fail("type mismatch: expected array/vector", line);
+    }
+    return initialized;
+  }
+
+  private ensureInitialized(
+    value: RuntimeValue,
+    line: number,
+    name: string,
+  ): Exclude<RuntimeValue, { kind: "uninitialized" }> {
     if (value.kind === "uninitialized") {
       this.fail(`use of uninitialized variable '${name}'`, line);
     }
@@ -503,12 +739,93 @@ class Interpreter {
     return value;
   }
 
-  private define(name: string, value: RuntimeValue): void {
-    const scope = this.currentScope();
+  private assignFromInput(target: AssignTargetNode, token: string, line: number): void {
+    const current = this.readAssignTarget(target, line);
+    if (current.kind === "int") {
+      this.writeAssignTarget(target, { kind: "int", value: BigInt(token) }, line);
+      return;
+    }
+    if (current.kind === "bool") {
+      if (token !== "0" && token !== "1") {
+        this.fail(`cannot convert '${token}' to bool`, line);
+      }
+      this.writeAssignTarget(target, { kind: "bool", value: token === "1" }, line);
+      return;
+    }
+    if (current.kind === "string") {
+      this.writeAssignTarget(target, { kind: "string", value: token }, line);
+      return;
+    }
+    if (current.kind === "uninitialized") {
+      if (current.expected === "int") {
+        this.writeAssignTarget(target, { kind: "int", value: BigInt(token) }, line);
+      } else if (current.expected === "bool") {
+        if (token !== "0" && token !== "1") {
+          this.fail(`cannot convert '${token}' to bool`, line);
+        }
+        this.writeAssignTarget(target, { kind: "bool", value: token === "1" }, line);
+      } else {
+        this.writeAssignTarget(target, { kind: "string", value: token }, line);
+      }
+      return;
+    }
+    this.fail("invalid cin target", line);
+  }
+
+  private readAssignTarget(target: AssignTargetNode, line: number): RuntimeValue {
+    if (target.kind === "Identifier") {
+      return this.resolve(target.name, line);
+    }
+    return this.getIndexedValue(target.target, target.index, line);
+  }
+
+  private writeAssignTarget(target: AssignTargetNode, value: RuntimeValue, line: number): void {
+    if (target.kind === "Identifier") {
+      this.assign(target.name, value, line);
+      return;
+    }
+    this.setIndexedValue(target.target, target.index, value, line);
+  }
+
+  private allocateArray(
+    elementType: PrimitiveElementType,
+    dynamic: boolean,
+    values: RuntimeValue[],
+  ): RuntimeValue {
+    const ref = this.nextArrayRef;
+    this.nextArrayRef += 1;
+    this.arrays.set(ref, { elementType, values, dynamic });
+    return { kind: "array", ref, elementType, dynamic };
+  }
+
+  private castToElementType(value: RuntimeValue, typeName: PrimitiveElementType, line: number): RuntimeValue {
+    const initialized = this.ensureInitialized(value, line, "value");
+    if (initialized.kind !== typeName) {
+      this.fail(`cannot convert '${initialized.kind}' to '${typeName}'`, line);
+    }
+    return initialized;
+  }
+
+  private defaultPrimitiveValue(typeName: PrimitiveTypeName | PrimitiveElementType): RuntimeValue {
+    const normalized = typeName === "long long" ? "int" : typeName;
+    if (normalized === "int") {
+      return { kind: "int", value: 0n };
+    }
+    if (normalized === "bool") {
+      return { kind: "bool", value: false };
+    }
+    return { kind: "string", value: "" };
+  }
+
+  private defineInScope(scope: Scope, name: string, value: RuntimeValue, line: number): void {
     if (scope.has(name)) {
-      this.fail(`redefinition of '${name}'`, this.currentLine);
+      this.fail(`redefinition of '${name}'`, line);
     }
     scope.set(name, value);
+  }
+
+  private define(name: string, value: RuntimeValue): void {
+    this.defineInScope(this.currentScope(), name, value, this.currentLine);
   }
 
   private resolve(name: string, line: number): RuntimeValue {
@@ -538,20 +855,26 @@ class Interpreter {
         continue;
       }
       if (scope.has(name)) {
-        scope.set(name, value);
-        return;
+        const current = scope.get(name);
+        if (current !== undefined) {
+          scope.set(name, this.assignWithCurrentType(current, value, line));
+          return;
+        }
       }
     }
 
     if (this.globals.has(name)) {
-      this.globals.set(name, value);
-      return;
+      const current = this.globals.get(name);
+      if (current !== undefined) {
+        this.globals.set(name, this.assignWithCurrentType(current, value, line));
+        return;
+      }
     }
 
     this.fail(`'${name}' was not declared in this scope`, line);
   }
 
-  private assertType(typeName: PrimitiveTypeName, value: RuntimeValue, line: number): RuntimeValue {
+  private assertPrimitiveType(typeName: PrimitiveTypeName, value: RuntimeValue, line: number): RuntimeValue {
     const normalizedType = typeName === "long long" ? "int" : typeName;
     if (normalizedType === "void") {
       return { kind: "void" };
@@ -579,9 +902,51 @@ class Interpreter {
     return scope;
   }
 
+  private step(line: number): void {
+    this.currentLine = line;
+    const top = this.frameStack[this.frameStack.length - 1];
+    if (top !== undefined) {
+      top.line = line;
+    }
+    this.options.onStep?.({
+      line,
+      callStack: this.frameStack.map((frame) => ({
+        functionName: frame.functionName,
+        line: frame.line,
+      })),
+    });
+  }
+
   private fail(message: string, line: number): never {
     throw new RuntimeTrap(message, this.currentFunction, line);
   }
+
+  private toElementType(typeName: PrimitiveTypeName, line: number): PrimitiveElementType {
+    if (typeName === "int" || typeName === "long long") {
+      return "int";
+    }
+    if (typeName === "bool") {
+      return "bool";
+    }
+    if (typeName === "string") {
+      return "string";
+    }
+    this.fail("element type cannot be void", line);
+  }
+}
+
+export function buildDebugState(
+  result: RunResult,
+  latestLine: number,
+  callStack: FrameView[],
+): DebugState {
+  return {
+    status: result.status === "done" ? "done" : "error",
+    currentLine: latestLine,
+    callStack,
+    output: result.output,
+    error: result.error,
+  };
 }
 
 function compareValues(
@@ -602,6 +967,8 @@ function compareValues(
       return comparePrimitive(left.value, (right as { kind: "bool"; value: boolean }).value, operator);
     case "string":
       return comparePrimitive(left.value, (right as { kind: "string"; value: string }).value, operator);
+    case "array":
+      fail("array comparison is not supported", line);
   }
 }
 

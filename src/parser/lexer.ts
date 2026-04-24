@@ -6,6 +6,7 @@ const KEYWORDS = new Set<string>([
   "bool",
   "string",
   "void",
+  "vector",
   "if",
   "else",
   "for",

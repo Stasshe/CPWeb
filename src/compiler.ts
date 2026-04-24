@@ -21,6 +21,10 @@ export function runCompiled(program: ProgramNode, input = ""): RunResult {
   return runProgram(program, input);
 }
 
+export function formatRuntimeError(errorMessage: string, functionName: string, line: number): string {
+  return `Runtime Error: ${errorMessage}\n  at ${functionName}:${line}`;
+}
+
 export function compileAndRun(source: string, input = "", filename = "<input>"): RunResult {
   const compiled = compile(source);
   if (!compiled.ok) {
@@ -34,5 +38,19 @@ export function compileAndRun(source: string, input = "", filename = "<input>"):
       },
     };
   }
-  return runCompiled(compiled.program, input);
+  const runResult = runCompiled(compiled.program, input);
+  if (runResult.error !== null) {
+    return {
+      ...runResult,
+      error: {
+        ...runResult.error,
+        message: formatRuntimeError(
+          runResult.error.message,
+          runResult.error.functionName,
+          runResult.error.line,
+        ),
+      },
+    };
+  }
+  return runResult;
 }

@@ -9,9 +9,11 @@ export type NodeBase = SourceLocation;
 
 export type ProgramNode = NodeBase & {
   kind: "Program";
-  globals: VarDeclNode[];
+  globals: GlobalDeclNode[];
   functions: FunctionDeclNode[];
 };
+
+export type GlobalDeclNode = VarDeclNode | ArrayDeclNode | VectorDeclNode;
 
 export type FunctionDeclNode = NodeBase & {
   kind: "FunctionDecl";
@@ -30,6 +32,8 @@ export type ParamNode = NodeBase & {
 export type StatementNode =
   | BlockStmtNode
   | VarDeclNode
+  | ArrayDeclNode
+  | VectorDeclNode
   | IfStmtNode
   | ForStmtNode
   | WhileStmtNode
@@ -51,6 +55,21 @@ export type VarDeclNode = NodeBase & {
   typeName: PrimitiveTypeName;
   name: string;
   initializer: ExprNode | null;
+};
+
+export type ArrayDeclNode = NodeBase & {
+  kind: "ArrayDecl";
+  elementType: PrimitiveTypeName;
+  name: string;
+  size: bigint;
+  initializers: ExprNode[];
+};
+
+export type VectorDeclNode = NodeBase & {
+  kind: "VectorDecl";
+  elementType: PrimitiveTypeName;
+  name: string;
+  constructorArgs: ExprNode[];
 };
 
 export type IfStmtNode = NodeBase & {
@@ -108,7 +127,7 @@ export type CerrStmtNode = NodeBase & {
 
 export type CinStmtNode = NodeBase & {
   kind: "CinStmt";
-  targets: IdentifierExprNode[];
+  targets: AssignTargetNode[];
 };
 
 export type ExprNode =
@@ -116,13 +135,17 @@ export type ExprNode =
   | BinaryExprNode
   | UnaryExprNode
   | CallExprNode
+  | MethodCallExprNode
+  | IndexExprNode
   | IdentifierExprNode
   | LiteralExprNode;
+
+export type AssignTargetNode = IdentifierExprNode | IndexExprNode;
 
 export type AssignExprNode = NodeBase & {
   kind: "AssignExpr";
   operator: "=" | "+=" | "-=" | "*=" | "/=" | "%=";
-  target: IdentifierExprNode;
+  target: AssignTargetNode;
   value: ExprNode;
 };
 
@@ -157,6 +180,19 @@ export type CallExprNode = NodeBase & {
   kind: "CallExpr";
   callee: string;
   args: ExprNode[];
+};
+
+export type MethodCallExprNode = NodeBase & {
+  kind: "MethodCallExpr";
+  receiver: ExprNode;
+  method: string;
+  args: ExprNode[];
+};
+
+export type IndexExprNode = NodeBase & {
+  kind: "IndexExpr";
+  target: ExprNode;
+  index: ExprNode;
 };
 
 export type IdentifierExprNode = NodeBase & {
@@ -200,6 +236,19 @@ export type RunStatus = "done" | "error";
 
 export type RunResult = {
   status: RunStatus;
+  output: InterpreterOutput;
+  error: RuntimeErrorInfo | null;
+};
+
+export type FrameView = {
+  functionName: string;
+  line: number;
+};
+
+export type DebugState = {
+  status: "ready" | "running" | "paused" | "done" | "error";
+  currentLine: number;
+  callStack: FrameView[];
   output: InterpreterOutput;
   error: RuntimeErrorInfo | null;
 };

@@ -1,5 +1,7 @@
 import type {
+  ArrayDeclNode,
   AssignExprNode,
+  AssignTargetNode,
   BinaryExprNode,
   BlockStmtNode,
   CompileError,
@@ -7,13 +9,14 @@ import type {
   ExprNode,
   ForInitNode,
   FunctionDeclNode,
-  IdentifierExprNode,
+  GlobalDeclNode,
   PrimitiveTypeName,
   ProgramNode,
   StatementNode,
   Token,
   UnaryExprNode,
   VarDeclNode,
+  VectorDeclNode,
 } from "../types";
 
 const TYPE_KEYWORDS = new Set<string>(["int", "long", "bool", "string", "void"]);
@@ -35,10 +38,20 @@ class Parser {
   }
 
   parseProgram(): CompileResult {
-    const globals: VarDeclNode[] = [];
+    const globals: GlobalDeclNode[] = [];
     const functions: FunctionDeclNode[] = [];
 
     while (!this.isAtEnd()) {
+      if (this.checkKeyword("vector")) {
+        const decl = this.parseVectorDecl();
+        if (decl !== null) {
+          globals.push(decl);
+        } else {
+          this.synchronizeTopLevel();
+        }
+        continue;
+      }
+
       if (!this.peekTypeKeyword()) {
         this.errorAtCurrent("expected type specifier");
         this.synchronizeTopLevel();
@@ -59,7 +72,7 @@ class Parser {
 
       if (this.matchSymbol("(")) {
         const params = this.parseParams();
-        const body = this.parseBlock();
+        const body = this.parseRequiredBlock("expected block after function signature");
         if (body === null) {
           this.synchronizeTopLevel();
           continue;
@@ -73,21 +86,32 @@ class Parser {
           line: nameToken.line,
           col: nameToken.col,
         });
-      } else {
-        const initializer = this.matchSymbol("=") ? this.parseExpression() : null;
-        if (!this.consumeSymbol(";", "expected ';' after global variable declaration")) {
-          this.synchronizeTopLevel();
-          continue;
-        }
-        globals.push({
-          kind: "VarDecl",
-          typeName,
-          name: nameToken.text,
-          initializer,
-          line: nameToken.line,
-          col: nameToken.col,
-        });
+        continue;
       }
+
+      if (this.matchSymbol("[")) {
+        const arrayDecl = this.finishArrayDecl(typeName, nameToken);
+        if (arrayDecl !== null) {
+          globals.push(arrayDecl);
+        } else {
+          this.synchronizeTopLevel();
+        }
+        continue;
+      }
+
+      const initializer = this.matchSymbol("=") ? this.parseExpression() : null;
+      if (!this.consumeSymbol(";", "expected ';' after declaration")) {
+        this.synchronizeTopLevel();
+        continue;
+      }
+      globals.push({
+        kind: "VarDecl",
+        typeName,
+        name: nameToken.text,
+        initializer,
+        line: nameToken.line,
+        col: nameToken.col,
+      });
     }
 
     if (!functions.some((f) => f.name === "main")) {
@@ -146,14 +170,12 @@ class Parser {
     return params;
   }
 
-  private parseBlock(): BlockStmtNode | null {
-    const open = this.previous();
-    if (open.text !== "{") {
-      if (!this.consumeSymbol("{", "expected '{' before block")) {
-        return null;
-      }
+  private parseRequiredBlock(errorMessage: string): BlockStmtNode | null {
+    if (!this.consumeSymbol("{", errorMessage)) {
+      return null;
     }
 
+    const open = this.previous();
     const statements: StatementNode[] = [];
     while (!this.checkSymbol("}") && !this.isAtEnd()) {
       const stmt = this.parseStatement();
@@ -168,22 +190,47 @@ class Parser {
       return null;
     }
 
-    const openToken = open.text === "{" ? open : this.previous();
     return {
       kind: "BlockStmt",
       statements,
-      line: openToken.line,
-      col: openToken.col,
+      line: open.line,
+      col: open.col,
     };
   }
 
   private parseStatement(): StatementNode | null {
-    if (this.matchSymbol("{")) {
-      return this.parseBlock();
+    if (this.checkSymbol("{")) {
+      return this.parseRequiredBlock("expected block");
+    }
+
+    if (this.checkKeyword("vector")) {
+      return this.parseVectorDecl();
     }
 
     if (this.peekTypeKeyword()) {
-      return this.parseVarDecl(true);
+      const typeName = this.parseTypeName();
+      if (typeName === null) {
+        return null;
+      }
+      const nameToken = this.consumeIdentifier("expected variable name");
+      if (nameToken === null) {
+        return null;
+      }
+      if (this.matchSymbol("[")) {
+        return this.finishArrayDecl(typeName, nameToken);
+      }
+      const initializer = this.matchSymbol("=") ? this.parseExpression() : null;
+      if (!this.consumeSymbol(";", "expected ';' after variable declaration")) {
+        return null;
+      }
+      return {
+        kind: "VarDecl",
+        typeName,
+        name: nameToken.text,
+        initializer,
+        line: nameToken.line,
+        col: nameToken.col,
+      };
     }
 
     if (this.matchKeyword("if")) {
@@ -337,26 +384,25 @@ class Parser {
     if (this.matchKeyword("cerr")) {
       const token = this.previous();
       const values = this.parseShiftExprList("<<", "expected '<<' followed by expression in cerr");
-      const parsed = values;
-      if (parsed === null) {
+      if (values === null) {
         return null;
       }
       if (!this.consumeSymbol(";", "expected ';' after cerr statement")) {
         return null;
       }
-      return { kind: "CerrStmt", values: parsed, line: token.line, col: token.col };
+      return { kind: "CerrStmt", values, line: token.line, col: token.col };
     }
 
     if (this.matchKeyword("cin")) {
       const token = this.previous();
-      const targets: IdentifierExprNode[] = [];
+      const targets: AssignTargetNode[] = [];
       if (!this.consumeSymbol(">>", "expected '>>' in cin statement")) {
         return null;
       }
       while (true) {
-        const expr = this.parsePrimary();
-        if (expr === null || expr.kind !== "Identifier") {
-          this.errorAtCurrent("cin target must be an identifier");
+        const expr = this.parseExpression();
+        if (!isAssignTarget(expr)) {
+          this.errorAtCurrent("cin target must be an lvalue");
           return null;
         }
         targets.push(expr);
@@ -389,7 +435,7 @@ class Parser {
     }
 
     if (this.peekTypeKeyword()) {
-      const decl = this.parseVarDecl(false);
+      const decl = this.parseVarDeclNoSemicolon();
       if (decl === null) {
         return { kind: "none" };
       }
@@ -406,7 +452,7 @@ class Parser {
     return { kind: "expr", value };
   }
 
-  private parseVarDecl(expectSemicolon: boolean): VarDeclNode | null {
+  private parseVarDeclNoSemicolon(): VarDeclNode | null {
     const typeName = this.parseTypeName();
     if (typeName === null) {
       return null;
@@ -418,11 +464,6 @@ class Parser {
     }
 
     const initializer = this.matchSymbol("=") ? this.parseExpression() : null;
-
-    if (expectSemicolon && !this.consumeSymbol(";", "expected ';' after variable declaration")) {
-      return null;
-    }
-
     return {
       kind: "VarDecl",
       typeName,
@@ -433,11 +474,109 @@ class Parser {
     };
   }
 
-  private parseRequiredBlock(errorMessage: string): BlockStmtNode | null {
-    if (!this.consumeSymbol("{", errorMessage)) {
+  private finishArrayDecl(
+    elementType: PrimitiveTypeName,
+    nameToken: Token,
+  ): ArrayDeclNode | null {
+    if (elementType === "void") {
+      this.errorAt(nameToken, "array element type cannot be void");
       return null;
     }
-    return this.parseBlock();
+
+    const sizeToken = this.consume("number", "expected array size integer literal");
+    if (sizeToken === null) {
+      return null;
+    }
+
+    if (!this.consumeSymbol("]", "expected ']' after array size")) {
+      return null;
+    }
+
+    const initializers: ExprNode[] = [];
+    if (this.matchSymbol("=")) {
+      if (!this.consumeSymbol("{", "expected '{' for array initializer")) {
+        return null;
+      }
+      if (!this.checkSymbol("}")) {
+        while (true) {
+          initializers.push(this.parseExpression());
+          if (!this.matchSymbol(",")) {
+            break;
+          }
+        }
+      }
+      if (!this.consumeSymbol("}", "expected '}' after array initializer")) {
+        return null;
+      }
+    }
+
+    if (!this.consumeSymbol(";", "expected ';' after array declaration")) {
+      return null;
+    }
+
+    return {
+      kind: "ArrayDecl",
+      elementType,
+      name: nameToken.text,
+      size: BigInt(sizeToken.text),
+      initializers,
+      line: nameToken.line,
+      col: nameToken.col,
+    };
+  }
+
+  private parseVectorDecl(): VectorDeclNode | null {
+    const vectorToken = this.peek();
+    if (!this.consumeKeyword("vector", "expected 'vector'")) {
+      return null;
+    }
+    if (!this.consumeSymbol("<", "expected '<' after vector")) {
+      return null;
+    }
+
+    const elementType = this.parseTypeName();
+    if (elementType === null) {
+      return null;
+    }
+    if (elementType === "void") {
+      this.errorAtCurrent("vector element type cannot be void");
+      return null;
+    }
+
+    if (!this.consumeSymbol(">", "expected '>' after vector element type")) {
+      return null;
+    }
+
+    const nameToken = this.consumeIdentifier("expected vector variable name");
+    if (nameToken === null) {
+      return null;
+    }
+
+    const constructorArgs: ExprNode[] = [];
+    if (this.matchSymbol("(")) {
+      if (!this.matchSymbol(")")) {
+        constructorArgs.push(this.parseExpression());
+        if (this.matchSymbol(",")) {
+          constructorArgs.push(this.parseExpression());
+        }
+        if (!this.consumeSymbol(")", "expected ')' after vector constructor args")) {
+          return null;
+        }
+      }
+    }
+
+    if (!this.consumeSymbol(";", "expected ';' after vector declaration")) {
+      return null;
+    }
+
+    return {
+      kind: "VectorDecl",
+      elementType,
+      name: nameToken.text,
+      constructorArgs,
+      line: vectorToken.line,
+      col: vectorToken.col,
+    };
   }
 
   private parseShiftExprList(symbol: "<<" | ">>", message: string): ExprNode[] | null {
@@ -462,8 +601,8 @@ class Parser {
     const left = this.parseLogicalOr();
     if (this.matchAnySymbol(["=", "+=", "-=", "*=", "/=", "%="])) {
       const opToken = this.previous();
-      if (left.kind !== "Identifier") {
-        this.errorAt(opToken, "left side of assignment must be an identifier");
+      if (!isAssignTarget(left)) {
+        this.errorAt(opToken, "left side of assignment must be an lvalue");
         return left;
       }
       const value = this.parseAssignment();
@@ -519,8 +658,12 @@ class Parser {
       return node;
     }
 
-    const expr = this.parsePrimary();
-    if (expr === null) {
+    return this.parsePostfix();
+  }
+
+  private parsePostfix(): ExprNode {
+    const base = this.parsePrimary();
+    if (base === null) {
       const token = this.peek();
       this.errorAt(token, "expected expression");
       return {
@@ -532,17 +675,98 @@ class Parser {
       };
     }
 
-    if (this.matchAnySymbol(["++", "--"])) {
-      const op = this.previous();
-      const node: UnaryExprNode = {
-        kind: "UnaryExpr",
-        operator: op.text as UnaryExprNode["operator"],
-        operand: expr,
-        isPostfix: true,
-        line: op.line,
-        col: op.col,
-      };
-      return node;
+    let expr: ExprNode = base;
+
+    while (true) {
+      if (this.matchSymbol("(")) {
+        const args: ExprNode[] = [];
+        if (!this.matchSymbol(")")) {
+          while (true) {
+            args.push(this.parseExpression());
+            if (this.matchSymbol(")")) {
+              break;
+            }
+            if (!this.consumeSymbol(",", "expected ',' or ')' in argument list")) {
+              break;
+            }
+          }
+        }
+
+        if (expr.kind !== "Identifier") {
+          this.errorAt(this.previous(), "invalid function call target");
+          break;
+        }
+
+        expr = {
+          kind: "CallExpr",
+          callee: expr.name,
+          args,
+          line: expr.line,
+          col: expr.col,
+        };
+        continue;
+      }
+
+      if (this.matchSymbol("[")) {
+        const index = this.parseExpression();
+        if (!this.consumeSymbol("]", "expected ']' after index expression")) {
+          break;
+        }
+        expr = {
+          kind: "IndexExpr",
+          target: expr,
+          index,
+          line: expr.line,
+          col: expr.col,
+        };
+        continue;
+      }
+
+      if (this.matchSymbol(".")) {
+        const methodToken = this.consumeIdentifier("expected method name after '.'");
+        if (methodToken === null) {
+          break;
+        }
+        if (!this.consumeSymbol("(", "expected '(' after method name")) {
+          break;
+        }
+        const args: ExprNode[] = [];
+        if (!this.matchSymbol(")")) {
+          while (true) {
+            args.push(this.parseExpression());
+            if (this.matchSymbol(")")) {
+              break;
+            }
+            if (!this.consumeSymbol(",", "expected ',' or ')' in argument list")) {
+              break;
+            }
+          }
+        }
+        expr = {
+          kind: "MethodCallExpr",
+          receiver: expr,
+          method: methodToken.text,
+          args,
+          line: methodToken.line,
+          col: methodToken.col,
+        };
+        continue;
+      }
+
+      if (this.matchAnySymbol(["++", "--"])) {
+        const op = this.previous();
+        expr = {
+          kind: "UnaryExpr",
+          operator: op.text as UnaryExprNode["operator"],
+          operand: expr,
+          isPostfix: true,
+          line: op.line,
+          col: op.col,
+        };
+        continue;
+      }
+
+      break;
     }
 
     return expr;
@@ -584,36 +808,12 @@ class Parser {
 
     if (this.match("identifier")) {
       const id = this.previous();
-      const identifier: IdentifierExprNode = {
+      return {
         kind: "Identifier",
         name: id.text,
         line: id.line,
         col: id.col,
       };
-
-      if (this.matchSymbol("(")) {
-        const args: ExprNode[] = [];
-        if (!this.matchSymbol(")")) {
-          while (true) {
-            args.push(this.parseExpression());
-            if (this.matchSymbol(")")) {
-              break;
-            }
-            if (!this.consumeSymbol(",", "expected ',' or ')' in argument list")) {
-              break;
-            }
-          }
-        }
-        return {
-          kind: "CallExpr",
-          callee: identifier.name,
-          args,
-          line: id.line,
-          col: id.col,
-        };
-      }
-
-      return identifier;
     }
 
     if (this.matchSymbol("(")) {
@@ -630,7 +830,7 @@ class Parser {
     while (this.matchAnySymbol(operators)) {
       const op = this.previous();
       const right = parseOperand();
-      const node: BinaryExprNode = {
+      expr = {
         kind: "BinaryExpr",
         operator: op.text as BinaryExprNode["operator"],
         left: expr,
@@ -638,7 +838,6 @@ class Parser {
         line: op.line,
         col: op.col,
       };
-      expr = node;
     }
     return expr;
   }
@@ -672,12 +871,24 @@ class Parser {
     return token.kind === "keyword" && TYPE_KEYWORDS.has(token.text);
   }
 
-  private consumeIdentifier(message: string): Token | null {
-    if (this.match("identifier")) {
+  private consume(kind: Token["kind"], message: string): Token | null {
+    if (this.match(kind)) {
       return this.previous();
     }
     this.errorAtCurrent(message);
     return null;
+  }
+
+  private consumeIdentifier(message: string): Token | null {
+    return this.consume("identifier", message);
+  }
+
+  private consumeKeyword(keyword: string, message: string): boolean {
+    if (this.matchKeyword(keyword)) {
+      return true;
+    }
+    this.errorAtCurrent(message);
+    return false;
   }
 
   private consumeSymbol(symbol: string, message: string): boolean {
@@ -734,10 +945,7 @@ class Parser {
 
   private checkNextKeyword(keyword: string): boolean {
     const token = this.tokens[this.index + 1];
-    if (token === undefined) {
-      return false;
-    }
-    return token.kind === "keyword" && token.text === keyword;
+    return token?.kind === "keyword" && token.text === keyword;
   }
 
   private advance(): Token {
@@ -769,7 +977,7 @@ class Parser {
 
   private synchronizeTopLevel(): void {
     while (!this.isAtEnd()) {
-      if (this.peekTypeKeyword()) {
+      if (this.peekTypeKeyword() || this.checkKeyword("vector")) {
         return;
       }
       this.advance();
@@ -787,6 +995,10 @@ class Parser {
       this.advance();
     }
   }
+}
+
+function isAssignTarget(expr: ExprNode): expr is AssignTargetNode {
+  return expr.kind === "Identifier" || expr.kind === "IndexExpr";
 }
 
 function tokensStart(tokens: Token[]): { line: number; col: number } {
