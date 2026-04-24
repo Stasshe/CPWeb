@@ -518,6 +518,7 @@ type          = "int" | "long long" | "bool" | "string" | "void"
 
 (* 文 *)
 block         = "{" { statement } "}" ;
+stmt_or_block = block | statement ;
 statement     = var_decl
               | array_decl
               | vector_decl
@@ -534,15 +535,15 @@ var_decl      = type ident [ "=" expr ] ";" ;
 array_decl    = type ident "[" int_lit "]" [ "=" "{" [ expr_list ] "}" ] ";" ;
 vector_decl   = "vector" "<" type ">" ident [ "(" [ expr [ "," expr ] ] ")" ] ";" ;
 
-if_stmt       = "if" "(" expr ")" block
-                { "else" "if" "(" expr ")" block }
-                [ "else" block ] ;
+if_stmt       = "if" "(" expr ")" stmt_or_block
+                { "else" "if" "(" expr ")" stmt_or_block }
+                [ "else" stmt_or_block ] ;
 
-for_stmt      = "for" "(" for_init expr ";" for_update ")" block ;
+for_stmt      = "for" "(" for_init expr ";" for_update ")" stmt_or_block ;
 for_init      = var_decl | assign_expr ";" | ";" ;
 for_update    = assign_expr | postfix_expr | ε ;
 
-while_stmt    = "while" "(" expr ")" block ;
+while_stmt    = "while" "(" expr ")" stmt_or_block ;
 return_stmt   = "return" [ expr ] ";" ;
 break_stmt    = "break" ";" ;
 continue_stmt = "continue" ";" ;

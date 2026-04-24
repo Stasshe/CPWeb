@@ -198,6 +198,23 @@ class Parser {
     };
   }
 
+  private parseStmtOrBlock(): BlockStmtNode | null {
+    if (this.checkSymbol("{")) {
+      return this.parseRequiredBlock("expected block");
+    }
+    // Parse single statement and wrap in block
+    const stmt = this.parseStatement();
+    if (stmt === null) {
+      return null;
+    }
+    return {
+      kind: "BlockStmt",
+      statements: [stmt],
+      line: stmt.line,
+      col: stmt.col,
+    };
+  }
+
   private parseStatement(): StatementNode | null {
     if (this.checkSymbol("{")) {
       return this.parseRequiredBlock("expected block");
@@ -242,7 +259,7 @@ class Parser {
       if (!this.consumeSymbol(")", "expected ')' after if condition")) {
         return null;
       }
-      const thenBlock = this.parseRequiredBlock("expected block after if");
+      const thenBlock = this.parseStmtOrBlock();
       if (thenBlock === null) {
         return null;
       }
@@ -262,7 +279,7 @@ class Parser {
         if (!this.consumeSymbol(")", "expected ')' after else-if condition")) {
           return null;
         }
-        const elseIfBlock = this.parseRequiredBlock("expected block after else if");
+        const elseIfBlock = this.parseStmtOrBlock();
         if (elseIfBlock === null) {
           return null;
         }
@@ -270,7 +287,7 @@ class Parser {
       }
 
       if (this.matchKeyword("else")) {
-        elseBlock = this.parseRequiredBlock("expected block after else");
+        elseBlock = this.parseStmtOrBlock();
         if (elseBlock === null) {
           return null;
         }
@@ -294,7 +311,7 @@ class Parser {
       if (!this.consumeSymbol(")", "expected ')' after while condition")) {
         return null;
       }
-      const body = this.parseRequiredBlock("expected block after while");
+      const body = this.parseStmtOrBlock();
       if (body === null) {
         return null;
       }
@@ -323,7 +340,7 @@ class Parser {
         return null;
       }
 
-      const body = this.parseRequiredBlock("expected block after for");
+      const body = this.parseStmtOrBlock();
       if (body === null) {
         return null;
       }
