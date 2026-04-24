@@ -2,11 +2,12 @@ import type { PrimitiveTypeNode } from "../types";
 
 export type RuntimeValue =
   | { kind: "int"; value: bigint }
+  | { kind: "double"; value: number }
   | { kind: "bool"; value: boolean }
   | { kind: "string"; value: string }
-  | { kind: "array"; ref: number; elementType: "int" | "bool" | "string"; dynamic: boolean }
+  | { kind: "array"; ref: number; elementType: "int" | "double" | "bool" | "string"; dynamic: boolean }
   | { kind: "void" }
-  | { kind: "uninitialized"; expected: "int" | "bool" | "string" };
+  | { kind: "uninitialized"; expected: "int" | "double" | "bool" | "string" };
 
 export function defaultValueForType(type: PrimitiveTypeNode): RuntimeValue {
   switch (type.name) {
@@ -15,6 +16,8 @@ export function defaultValueForType(type: PrimitiveTypeNode): RuntimeValue {
       return { kind: "int", value: 0n };
     case "bool":
       return { kind: "bool", value: false };
+    case "double":
+      return { kind: "double", value: 0 };
     case "string":
       return { kind: "string", value: "" };
     case "void":
@@ -29,6 +32,9 @@ export function uninitializedForType(type: PrimitiveTypeNode): RuntimeValue {
   if (type.name === "long long") {
     return { kind: "uninitialized", expected: "int" };
   }
+  if (type.name === "double") {
+    return { kind: "uninitialized", expected: "double" };
+  }
   return { kind: "uninitialized", expected: type.name };
 }
 
@@ -38,6 +44,8 @@ export function stringifyValue(value: RuntimeValue): string {
       return value.value.toString();
     case "bool":
       return value.value ? "1" : "0";
+    case "double":
+      return Number.isInteger(value.value) ? value.value.toFixed(1).replace(/\.0$/, "") : value.value.toString();
     case "string":
       return value.value;
     case "void":

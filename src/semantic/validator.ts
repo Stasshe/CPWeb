@@ -116,14 +116,8 @@ function validateParameterType(
 }
 
 function validateFunctionReturnType(fn: FunctionDeclNode, context: ValidationContext): void {
-  if (!isPrimitiveType(fn.returnType)) {
-    pushError(
-      context,
-      fn.line,
-      fn.col,
-      `function return type must be primitive, got '${typeToString(fn.returnType)}'`,
-    );
-    return;
+  if (fn.returnType.kind === "ArrayType") {
+    pushError(context, fn.line, fn.col, "function return type cannot be array");
   }
 }
 
@@ -152,7 +146,7 @@ function validateStatement(stmt: StatementNode, context: ValidationContext): voi
       return;
     case "IfStmt":
       for (const branch of stmt.branches) {
-        validateExpr(branch.condition, context, "bool");
+        validateConditionExpr(branch.condition, context);
         validateBlock(branch.thenBlock.statements, context);
       }
       if (stmt.elseBlock !== null) {
@@ -160,7 +154,7 @@ function validateStatement(stmt: StatementNode, context: ValidationContext): voi
       }
       return;
     case "WhileStmt":
-      validateExpr(stmt.condition, context, "bool");
+      validateConditionExpr(stmt.condition, context);
       validateLoopBody(stmt.body.statements, context);
       return;
     case "ForStmt":
@@ -175,7 +169,7 @@ function validateStatement(stmt: StatementNode, context: ValidationContext): voi
         validateExpr(stmt.init.value, context);
       }
       if (stmt.condition !== null) {
-        validateExpr(stmt.condition, context, "bool");
+        validateConditionExpr(stmt.condition, context);
       }
       if (stmt.update !== null) {
         validateExpr(stmt.update, context);
@@ -314,11 +308,21 @@ function validateExpr(
   return type;
 }
 
+function validateConditionExpr(expr: ExprNode, context: ValidationContext): void {
+  const type = validateExpr(expr, context);
+  if (type !== null && !isBoolType(type) && !isNumericType(type)) {
+    pushError(context, expr.line, expr.col, `cannot convert '${typeToString(type)}' to 'bool'`);
+  }
+}
+
 function inferExprType(expr: ExprNode, context: ValidationContext): TypeNode | null {
   switch (expr.kind) {
     case "Literal":
       if (expr.valueType === "int") {
         return { kind: "PrimitiveType", name: "int" };
+      }
+      if (expr.valueType === "double") {
+        return { kind: "PrimitiveType", name: "double" };
       }
       if (expr.valueType === "bool") {
         return { kind: "PrimitiveType", name: "bool" };
@@ -344,11 +348,11 @@ function inferExprType(expr: ExprNode, context: ValidationContext): TypeNode | n
     case "AssignExpr": {
       const targetType = inferExprType(expr.target, context);
       const valueType = validateExpr(expr.value, context, targetType ?? undefined);
-      if (expr.operator !== "=" && targetType !== null && !isIntType(targetType)) {
-        pushError(context, expr.line, expr.col, "type mismatch: expected int");
+      if (expr.operator !== "=" && targetType !== null && !isNumericType(targetType)) {
+        pushError(context, expr.line, expr.col, "type mismatch: expected numeric");
       }
-      if (expr.operator !== "=" && valueType !== null && !isIntType(valueType)) {
-        pushError(context, expr.line, expr.col, "type mismatch: expected int");
+      if (expr.operator !== "=" && valueType !== null && !isNumericType(valueType)) {
+        pushError(context, expr.line, expr.col, "type mismatch: expected numeric");
       }
       return targetType;
     }
@@ -360,7 +364,15 @@ function inferExprType(expr: ExprNode, context: ValidationContext): TypeNode | n
         }
         return { kind: "PrimitiveType", name: "bool" };
       }
-      if (expr.operator === "-" || expr.operator === "~") {
+      if (expr.operator === "-") {
+        if (operandType !== null && !isNumericType(operandType)) {
+          pushError(context, expr.line, expr.col, "type mismatch: expected numeric");
+        }
+        return operandType !== null && isDoubleType(operandType)
+          ? { kind: "PrimitiveType", name: "double" }
+          : { kind: "PrimitiveType", name: "int" };
+      }
+      if (expr.operator === "~") {
         if (operandType !== null && !isIntType(operandType)) {
           pushError(context, expr.line, expr.col, "type mismatch: expected int");
         }
@@ -410,7 +422,7 @@ function inferBinaryType(
     expr.operator === ">" ||
     expr.operator === ">="
   ) {
-    if (left !== null && right !== null && !sameType(left, right)) {
+    if (left !== null && right !== null && !sameType(left, right) && !(isNumericType(left) && isNumericType(right))) {
       pushError(context, expr.line, expr.col, "type mismatch in comparison");
     }
     return { kind: "PrimitiveType", name: "bool" };
@@ -436,11 +448,17 @@ function inferBinaryType(
     return { kind: "PrimitiveType", name: "int" };
   }
 
-  if (left !== null && !isIntType(left)) {
-    pushError(context, expr.left.line, expr.left.col, "type mismatch: expected int");
+  if (left !== null && !isNumericType(left)) {
+    pushError(context, expr.left.line, expr.left.col, "type mismatch: expected numeric");
   }
-  if (right !== null && !isIntType(right)) {
-    pushError(context, expr.right.line, expr.right.col, "type mismatch: expected int");
+  if (right !== null && !isNumericType(right)) {
+    pushError(context, expr.right.line, expr.right.col, "type mismatch: expected numeric");
+  }
+  if (left !== null && isDoubleType(left)) {
+    return { kind: "PrimitiveType", name: "double" };
+  }
+  if (right !== null && isDoubleType(right)) {
+    return { kind: "PrimitiveType", name: "double" };
   }
   return { kind: "PrimitiveType", name: "int" };
 }
@@ -764,7 +782,9 @@ function isAssignable(source: TypeNode, target: TypeNode): boolean {
     isPrimitiveType(source) &&
     isPrimitiveType(target) &&
     ((source.name === "int" && target.name === "long long") ||
-      (source.name === "long long" && target.name === "int"))
+      (source.name === "long long" && target.name === "int") ||
+      ((source.name === "int" || source.name === "long long") && target.name === "double") ||
+      (source.name === "double" && (target.name === "int" || target.name === "long long")))
   );
 }
 
@@ -774,6 +794,14 @@ function isAssignableExpr(expr: ExprNode): boolean {
 
 function isIntType(type: TypeNode): boolean {
   return isPrimitiveType(type) && (type.name === "int" || type.name === "long long");
+}
+
+function isDoubleType(type: TypeNode): boolean {
+  return isPrimitiveType(type) && type.name === "double";
+}
+
+function isNumericType(type: TypeNode): boolean {
+  return isIntType(type) || isDoubleType(type);
 }
 
 function isBoolType(type: TypeNode): boolean {

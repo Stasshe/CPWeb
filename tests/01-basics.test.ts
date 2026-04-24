@@ -166,4 +166,25 @@ int main() {
     expect(result.status).toBe("done");
     expect(result.output.stdout).toBe("9\n");
   });
+
+  it("accepts vector return types in function declarations", () => {
+    const source = `
+#include <bits/stdc++.h>
+#define int long long
+#define vi vector<int>
+
+using namespace std;
+
+vi sieve(int n) {
+  vi a(n + 1, 1);
+  return a;
+}
+
+signed main() {
+  return 0;
+}
+`;
+    const result = compile(source);
+    expect(result.ok).toBe(true);
+  });
 });

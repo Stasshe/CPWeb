@@ -232,6 +232,48 @@ int main() {
     expect(result.output.stdout).toBe("0\n1\n2\n");
   });
 
+  it("supports competitive programming compatibility patterns", () => {
+    const source = `
+#include <bits/stdc++.h>
+#define int long long
+#define fr(i,n) for (int i = 0; i < n; i++)
+#define endl "\\n"
+#define vi vector<int>
+
+using namespace std;
+const int MAXN = 8;
+
+int fact[MAXN];
+
+int count_ok(double p, int i, vi &a) {
+  if (i == a.size()) {
+    if (p >= 0) return 1;
+    return 0;
+  }
+  if (a[i] & 1) return count_ok(p - 0.5, i + 1, a);
+  return count_ok(p + 1, i + 1, a);
+}
+
+signed main() {
+  ios_base::sync_with_stdio(0);
+  cin.tie(0);
+  cout.tie(0);
+
+  fact[7] = 3;
+  vi a(3);
+  fr(i, 3) a[i] = i + 1;
+  int t = 1;
+  while (t--) {
+    cout << count_ok(0.5, 0, a) + fact[7] << endl;
+  }
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("4\n");
+  });
+
   it("for loop with no update", () => {
     const source = `
 int main() {

@@ -11,6 +11,9 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         if (expr.valueType === "int") {
           return { kind: "int", value: expr.value as bigint };
         }
+        if (expr.valueType === "double") {
+          return { kind: "double", value: expr.value as number };
+        }
         if (expr.valueType === "bool") {
           return { kind: "bool", value: expr.value as boolean };
         }
@@ -42,8 +45,15 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
           return { kind: "bool", value: !value.value };
         }
         if (expr.operator === "-") {
-          const value = this.expectInt(this.evaluateExpr(expr.operand), expr.line);
-          return { kind: "int", value: -value.value };
+          const value = this.ensureNotVoid(
+            this.ensureInitialized(this.evaluateExpr(expr.operand), expr.line, "operand"),
+            expr.line,
+          );
+          if (value.kind === "double") {
+            return { kind: "double", value: -value.value };
+          }
+          const intValue = this.expectInt(value, expr.line);
+          return { kind: "int", value: -intValue.value };
         }
         if (expr.operator === "~") {
           const value = this.expectInt(this.evaluateExpr(expr.operand), expr.line);
@@ -358,36 +368,65 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       };
     }
 
-    const leftInt = this.expectInt(left, expr.line);
-    const rightInt = this.expectInt(right, expr.line);
+    if (
+      expr.operator === "<<" ||
+      expr.operator === ">>" ||
+      expr.operator === "&" ||
+      expr.operator === "^" ||
+      expr.operator === "|"
+    ) {
+      const leftInt = this.expectInt(left, expr.line);
+      const rightInt = this.expectInt(right, expr.line);
+
+      switch (expr.operator) {
+        case "<<":
+          return { kind: "int", value: leftInt.value << this.normalizeShiftAmount(rightInt.value, expr.line) };
+        case ">>":
+          return { kind: "int", value: leftInt.value >> this.normalizeShiftAmount(rightInt.value, expr.line) };
+        case "&":
+          return { kind: "int", value: leftInt.value & rightInt.value };
+        case "^":
+          return { kind: "int", value: leftInt.value ^ rightInt.value };
+        case "|":
+          return { kind: "int", value: leftInt.value | rightInt.value };
+      }
+    }
+
+    const numeric = toNumericOperands(left, right, expr.line, this.fail.bind(this));
+    if (numeric.mode === "double") {
+      switch (expr.operator) {
+        case "+":
+          return { kind: "double", value: numeric.left + numeric.right };
+        case "-":
+          return { kind: "double", value: numeric.left - numeric.right };
+        case "*":
+          return { kind: "double", value: numeric.left * numeric.right };
+        case "/":
+          return { kind: "double", value: numeric.left / numeric.right };
+        case "%":
+          return { kind: "double", value: numeric.left % numeric.right };
+        default:
+          this.fail(`unsupported binary operator '${expr.operator}'`, expr.line);
+      }
+    }
 
     switch (expr.operator) {
       case "+":
-        return { kind: "int", value: leftInt.value + rightInt.value };
+        return { kind: "int", value: numeric.left + numeric.right };
       case "-":
-        return { kind: "int", value: leftInt.value - rightInt.value };
+        return { kind: "int", value: numeric.left - numeric.right };
       case "*":
-        return { kind: "int", value: leftInt.value * rightInt.value };
+        return { kind: "int", value: numeric.left * numeric.right };
       case "/":
-        if (rightInt.value === 0n) {
+        if (numeric.right === 0n) {
           this.fail("division by zero", expr.line);
         }
-        return { kind: "int", value: leftInt.value / rightInt.value };
+        return { kind: "int", value: numeric.left / numeric.right };
       case "%":
-        if (rightInt.value === 0n) {
+        if (numeric.right === 0n) {
           this.fail("division by zero", expr.line);
         }
-        return { kind: "int", value: leftInt.value % rightInt.value };
-      case "<<":
-        return { kind: "int", value: leftInt.value << this.normalizeShiftAmount(rightInt.value, expr.line) };
-      case ">>":
-        return { kind: "int", value: leftInt.value >> this.normalizeShiftAmount(rightInt.value, expr.line) };
-      case "&":
-        return { kind: "int", value: leftInt.value & rightInt.value };
-      case "^":
-        return { kind: "int", value: leftInt.value ^ rightInt.value };
-      case "|":
-        return { kind: "int", value: leftInt.value | rightInt.value };
+        return { kind: "int", value: numeric.left % numeric.right };
       default:
         this.fail(`unsupported binary operator '${expr.operator}'`, expr.line);
     }
@@ -459,7 +498,7 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     args: ExprNode[],
     callee: "sort" | "reverse" | "fill",
     line: number,
-  ): { store: { values: RuntimeValue[]; elementType: "int" | "bool" | "string"; dynamic: boolean } } {
+  ): { store: { values: RuntimeValue[]; elementType: "int" | "double" | "bool" | "string"; dynamic: boolean } } {
     const minArgs = callee === "fill" ? 3 : 2;
     const maxArgs = callee === "sort" ? 3 : callee === "fill" ? 3 : 2;
     if (args.length < minArgs || args.length > maxArgs) {
@@ -519,6 +558,11 @@ function compareValues(
   line: number,
   fail: (message: string, line: number) => never,
 ): boolean {
+  if (isNumericRuntimeValue(left) && isNumericRuntimeValue(right)) {
+    const operands = toNumericOperands(left, right, line, fail);
+    return comparePrimitive(operands.left, operands.right, operator);
+  }
+
   if (left.kind !== right.kind) {
     fail("type mismatch in comparison", line);
   }
@@ -526,6 +570,8 @@ function compareValues(
   switch (left.kind) {
     case "int":
       return comparePrimitive(left.value, (right as { kind: "int"; value: bigint }).value, operator);
+    case "double":
+      return comparePrimitive(left.value, (right as { kind: "double"; value: number }).value, operator);
     case "bool":
       return comparePrimitive(
         left.value,
@@ -543,7 +589,32 @@ function compareValues(
   }
 }
 
-function comparePrimitive<T extends bigint | boolean | string>(
+function isNumericRuntimeValue(
+  value: Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>,
+): value is Extract<RuntimeValue, { kind: "int" | "double" }> {
+  return value.kind === "int" || value.kind === "double";
+}
+
+function toNumericOperands(
+  left: Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>,
+  right: Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>,
+  line: number,
+  fail: (message: string, line: number) => never,
+): { mode: "int"; left: bigint; right: bigint } | { mode: "double"; left: number; right: number } {
+  if (!isNumericRuntimeValue(left) || !isNumericRuntimeValue(right)) {
+    fail("type mismatch: expected numeric", line);
+  }
+  if (left.kind === "double" || right.kind === "double") {
+    return {
+      mode: "double",
+      left: left.kind === "double" ? left.value : Number(left.value),
+      right: right.kind === "double" ? right.value : Number(right.value),
+    };
+  }
+  return { mode: "int", left: left.value, right: right.value };
+}
+
+function comparePrimitive<T extends bigint | number | boolean | string>(
   left: T,
   right: T,
   operator: "==" | "!=" | "<" | "<=" | ">" | ">=",
@@ -610,8 +681,8 @@ function sortablePrimitive(
   value: RuntimeValue,
   line: number,
   fail: (message: string, line: number) => never,
-): bigint | boolean | string {
-  if (value.kind === "int" || value.kind === "bool" || value.kind === "string") {
+): bigint | number | boolean | string {
+  if (value.kind === "int" || value.kind === "double" || value.kind === "bool" || value.kind === "string") {
     return value.value;
   }
   fail("sort/reverse/fill supports only primitive vector values", line);

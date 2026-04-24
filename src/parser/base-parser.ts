@@ -16,7 +16,7 @@ import type {
 } from "../types";
 import { arrayType, isPrimitiveType, primitiveType, vectorType } from "../types";
 
-const TYPE_KEYWORDS = new Set<string>(["int", "long", "bool", "string", "void"]);
+const TYPE_KEYWORDS = new Set<string>(["int", "long", "double", "bool", "string", "void"]);
 
 export abstract class BaseParser {
   protected readonly tokens: Token[];
@@ -44,6 +44,7 @@ export abstract class BaseParser {
       if (type === null) {
         break;
       }
+      this.matchSymbol("&");
       const nameToken = this.consumeIdentifier("expected parameter name");
       if (nameToken === null) {
         break;
@@ -612,6 +613,9 @@ export abstract class BaseParser {
     }
     if (this.matchKeyword("bool")) {
       return primitiveType("bool");
+    }
+    if (this.matchKeyword("double")) {
+      return primitiveType("double");
     }
     if (this.matchKeyword("string")) {
       return primitiveType("string");

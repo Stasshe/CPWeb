@@ -6,6 +6,9 @@ const KEYWORDS = new Set<string>([
   "bool",
   "string",
   "void",
+  "double",
+  "const",
+  "signed",
   "vector",
   "using",
   "namespace",
@@ -156,6 +159,21 @@ export function lex(source: string): LexResult {
       let text = "";
       while (/[0-9]/.test(peek())) {
         text += advance();
+      }
+      if (peek() === "." && /[0-9]/.test(peek(1))) {
+        text += advance();
+        while (/[0-9]/.test(peek())) {
+          text += advance();
+        }
+      }
+      if ((peek() === "e" || peek() === "E") && /[+\-0-9]/.test(peek(1))) {
+        text += advance();
+        if (peek() === "+" || peek() === "-") {
+          text += advance();
+        }
+        while (/[0-9]/.test(peek())) {
+          text += advance();
+        }
       }
       addToken("number", text, tokenLine, tokenCol);
       continue;

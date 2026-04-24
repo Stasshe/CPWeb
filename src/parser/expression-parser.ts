@@ -253,6 +253,15 @@ export abstract class ExpressionParser extends BaseParser {
 
     if (this.match("number")) {
       const t = this.previous();
+      if (/[.eE]/.test(t.text)) {
+        return {
+          kind: "Literal",
+          valueType: "double",
+          value: Number(t.text),
+          line: t.line,
+          col: t.col,
+        };
+      }
       return {
         kind: "Literal",
         valueType: "int",

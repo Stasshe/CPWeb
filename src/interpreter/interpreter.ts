@@ -185,7 +185,7 @@ class Interpreter extends InterpreterEvaluator {
       case "IfStmt":
         for (const branch of stmt.branches) {
           const condition = this.evaluateExpr(branch.condition);
-          if (this.expectBool(condition, branch.condition.line).value) {
+          if (this.evaluateCondition(condition, branch.condition.line)) {
             this.executeBlock(branch.thenBlock, true);
             return;
           }
@@ -195,7 +195,7 @@ class Interpreter extends InterpreterEvaluator {
         }
         return;
       case "WhileStmt":
-        while (this.expectBool(this.evaluateExpr(stmt.condition), stmt.condition.line).value) {
+        while (this.evaluateCondition(this.evaluateExpr(stmt.condition), stmt.condition.line)) {
           try {
             this.executeBlock(stmt.body, true);
           } catch (signal) {
@@ -241,7 +241,7 @@ class Interpreter extends InterpreterEvaluator {
 
           while (
             stmt.condition === null ||
-            this.expectBool(this.evaluateExpr(stmt.condition), stmt.line).value
+            this.evaluateCondition(this.evaluateExpr(stmt.condition), stmt.line)
           ) {
             try {
               this.executeBlock(stmt.body, true);

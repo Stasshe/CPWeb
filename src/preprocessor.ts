@@ -19,6 +19,8 @@ type PreprocessResult = { ok: true; source: string } | { ok: false; errors: Comp
 
 const INCLUDE_PATTERN = /^\s*#\s*include\s*<bits\/stdc\+\+\.h>\s*$/;
 const DEFINE_PATTERN = /^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)(\(([^)]*)\))?\s*(.*)$/;
+const CONST_DECL_PATTERN =
+  /^\s*const\s+(int|long\s+long|double|bool|string)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*;\s*$/;
 
 export function preprocess(source: string): PreprocessResult {
   const macros = new Map<string, MacroDefinition>();
@@ -32,7 +34,19 @@ export function preprocess(source: string): PreprocessResult {
     const trimmed = line.trimStart();
 
     if (!trimmed.startsWith("#")) {
-      output.push(expandLine(line, macros, lineNo, errors));
+      const expanded = expandLine(line, macros, lineNo, errors);
+      const normalized = normalizeCompatibilitySyntax(expanded);
+      const constDecl = normalized.match(CONST_DECL_PATTERN);
+      if (constDecl !== null) {
+        const name = constDecl[2];
+        const body = constDecl[3];
+        if (name !== undefined && body !== undefined) {
+          macros.set(name, { kind: "object", name, body });
+          output.push("");
+          continue;
+        }
+      }
+      output.push(stripConstKeyword(normalized));
       continue;
     }
 
@@ -177,6 +191,36 @@ function expandLine(
   }
 
   return result;
+}
+
+function normalizeCompatibilitySyntax(line: string): string {
+  let result = line;
+
+  if (/^\s*(ios_base::sync_with_stdio|cin\.tie|cout\.tie)\s*\(/.test(result)) {
+    return "";
+  }
+
+  result = result.replace(/\bios_base::/g, "");
+  result = result.replace(/\bsigned\s+main\s*\(/, "int main(");
+  result = result.replace(/(\b[A-Za-z_][A-Za-z0-9_]*\b)\s*>>=\s*([^;]+);/g, "$1 = $1 >> ($2);");
+  result = result.replace(/(\b[A-Za-z_][A-Za-z0-9_]*\b)\s*<<=\s*([^;]+);/g, "$1 = $1 << ($2);");
+  result = normalizeScientificIntegerLiterals(result);
+
+  return result;
+}
+
+function stripConstKeyword(line: string): string {
+  return line.replace(/^\s*const\s+(?=(int|long\s+long|double|bool|string|vector)\b)/, "");
+}
+
+function normalizeScientificIntegerLiterals(line: string): string {
+  return line.replace(/\b(\d+)[eE]\+?(\d+)\b/g, (_match, baseText: string, exponentText: string) => {
+    const exponent = Number(exponentText);
+    if (!Number.isInteger(exponent) || exponent < 0 || exponent > 18) {
+      return _match;
+    }
+    return `${baseText}${"0".repeat(exponent)}`;
+  });
 }
 
 function readStringLiteral(line: string, start: number): { text: string; nextIndex: number } {

@@ -1,4 +1,4 @@
-export type PrimitiveTypeName = "int" | "long long" | "bool" | "string" | "void";
+export type PrimitiveTypeName = "int" | "long long" | "double" | "bool" | "string" | "void";
 
 export type PrimitiveTypeNode = {
   kind: "PrimitiveType";
@@ -231,8 +231,8 @@ export type IdentifierExprNode = NodeBase & {
 
 export type LiteralExprNode = NodeBase & {
   kind: "Literal";
-  valueType: "int" | "bool" | "string";
-  value: bigint | boolean | string;
+  valueType: "int" | "double" | "bool" | "string";
+  value: bigint | number | boolean | string;
 };
 
 export type TokenKind = "identifier" | "keyword" | "number" | "string" | "symbol" | "eof";
@@ -263,7 +263,7 @@ export type InterpreterOutput = {
 
 export type DebugValueView = {
   name: string;
-  kind: "int" | "bool" | "string" | "array" | "void" | "uninitialized";
+  kind: "int" | "double" | "bool" | "string" | "array" | "void" | "uninitialized";
   value: string;
 };
 
@@ -274,7 +274,7 @@ export type ScopeView = {
 
 export type ArrayView = {
   ref: number;
-  elementType: "int" | "bool" | "string";
+  elementType: "int" | "double" | "bool" | "string";
   dynamic: boolean;
   values: string[];
 };

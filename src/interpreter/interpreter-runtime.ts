@@ -19,7 +19,7 @@ import type {
 import { isPrimitiveType } from "../types";
 
 export type Scope = Map<string, RuntimeValue>;
-export type PrimitiveElementType = "int" | "bool" | "string";
+export type PrimitiveElementType = "int" | "double" | "bool" | "string";
 
 export type ArrayStore = {
   elementType: PrimitiveElementType;
@@ -153,12 +153,34 @@ export abstract class InterpreterRuntime {
     return initialized;
   }
 
+  protected expectDouble(value: RuntimeValue, line: number): Extract<RuntimeValue, { kind: "double" }> {
+    const initialized = this.ensureInitialized(value, line, "value");
+    if (initialized.kind !== "double") {
+      this.fail("type mismatch: expected double", line);
+    }
+    return initialized;
+  }
+
   protected expectBool(value: RuntimeValue, line: number): Extract<RuntimeValue, { kind: "bool" }> {
     const initialized = this.ensureInitialized(value, line, "value");
     if (initialized.kind !== "bool") {
       this.fail("type mismatch: expected bool", line);
     }
     return initialized;
+  }
+
+  protected evaluateCondition(value: RuntimeValue, line: number): boolean {
+    const initialized = this.ensureInitialized(value, line, "value");
+    if (initialized.kind === "bool") {
+      return initialized.value;
+    }
+    if (initialized.kind === "int") {
+      return initialized.value !== 0n;
+    }
+    if (initialized.kind === "double") {
+      return initialized.value !== 0;
+    }
+    this.fail("cannot convert value to bool", line);
   }
 
   protected expectArray(value: RuntimeValue, line: number): Extract<RuntimeValue, { kind: "array" }> {
@@ -203,6 +225,10 @@ export abstract class InterpreterRuntime {
       this.writeAssignTarget(target, { kind: "bool", value: token === "1" }, line);
       return;
     }
+    if (current.kind === "double") {
+      this.writeAssignTarget(target, { kind: "double", value: Number(token) }, line);
+      return;
+    }
     if (current.kind === "string") {
       this.writeAssignTarget(target, { kind: "string", value: token }, line);
       return;
@@ -210,6 +236,8 @@ export abstract class InterpreterRuntime {
     if (current.kind === "uninitialized") {
       if (current.expected === "int") {
         this.writeAssignTarget(target, { kind: "int", value: BigInt(token) }, line);
+      } else if (current.expected === "double") {
+        this.writeAssignTarget(target, { kind: "double", value: Number(token) }, line);
       } else if (current.expected === "bool") {
         if (token !== "0" && token !== "1") {
           this.fail(`cannot convert '${token}' to bool`, line);
@@ -263,16 +291,15 @@ export abstract class InterpreterRuntime {
     typeName: PrimitiveElementType,
     line: number,
   ): RuntimeValue {
-    const initialized = this.ensureInitialized(value, line, "value");
-    if (initialized.kind !== typeName) {
-      this.fail(`cannot convert '${initialized.kind}' to '${typeName}'`, line);
-    }
-    return initialized;
+    return this.coerceRuntimeValue(typeName, value, line);
   }
 
   protected defaultPrimitiveValue(typeName: PrimitiveElementType): RuntimeValue {
     if (typeName === "int") {
       return { kind: "int", value: 0n };
+    }
+    if (typeName === "double") {
+      return { kind: "double", value: 0 };
     }
     if (typeName === "bool") {
       return { kind: "bool", value: false };
@@ -343,18 +370,15 @@ export abstract class InterpreterRuntime {
     line: number,
   ): RuntimeValue {
     if (current.kind === "uninitialized") {
-      if (value.kind !== current.expected) {
-        this.fail(`cannot assign '${value.kind}' to '${current.expected}'`, line);
-      }
-      return value;
+      return this.coerceRuntimeValue(current.expected, value, line);
     }
     if (current.kind === "array") {
       this.fail("cannot assign to array value directly", line);
     }
-    if (current.kind !== value.kind) {
-      this.fail(`cannot assign '${value.kind}' to '${current.kind}'`, line);
+    if (current.kind === "void") {
+      this.fail("cannot assign to void", line);
     }
-    return value;
+    return this.coerceRuntimeValue(current.kind, value, line);
   }
 
   protected assertPrimitiveType(type: TypeNode, value: RuntimeValue, line: number): RuntimeValue {
@@ -362,19 +386,15 @@ export abstract class InterpreterRuntime {
     if (normalizedType === "void") {
       return { kind: "void" };
     }
+    const runtimeType = normalizedType === "long long" ? "int" : normalizedType;
 
     if (value.kind === "uninitialized") {
-      if (value.expected !== normalizedType) {
-        this.fail(`cannot convert '${value.expected}' to '${normalizedType}'`, line);
+      if (value.expected !== runtimeType) {
+        return this.coerceRuntimeValue(runtimeType, value, line);
       }
       return value;
     }
-
-    if (value.kind !== normalizedType) {
-      this.fail(`cannot convert '${value.kind}' to '${normalizedType}'`, line);
-    }
-
-    return value;
+    return this.coerceRuntimeValue(runtimeType, value, line);
   }
 
   protected assertType(type: TypeNode, value: RuntimeValue, line: number): RuntimeValue {
@@ -444,6 +464,9 @@ export abstract class InterpreterRuntime {
     if (typeName === "bool") {
       return "bool";
     }
+    if (typeName === "double") {
+      return "double";
+    }
     if (typeName === "string") {
       return "string";
     }
@@ -467,7 +490,7 @@ export abstract class InterpreterRuntime {
   protected normalizePrimitiveType(
     type: TypeNode,
     line: number,
-  ): "int" | "long long" | "bool" | "string" | "void" {
+  ): "int" | "long long" | "double" | "bool" | "string" | "void" {
     const primitive = this.expectPrimitiveType(type, line);
     return primitive.name;
   }
@@ -506,6 +529,27 @@ export abstract class InterpreterRuntime {
       default:
         return stringifyValue(value);
     }
+  }
+
+  protected coerceRuntimeValue(
+    expected: "int" | "double" | "bool" | "string",
+    value: RuntimeValue,
+    line: number,
+  ): RuntimeValue {
+    const initialized = this.ensureInitialized(value, line, "value");
+    if (initialized.kind === expected) {
+      return initialized;
+    }
+    if (expected === "double" && initialized.kind === "int") {
+      return { kind: "double", value: Number(initialized.value) };
+    }
+    if (expected === "int" && initialized.kind === "double") {
+      if (!Number.isFinite(initialized.value) || !Number.isInteger(initialized.value)) {
+        this.fail("cannot convert 'double' to 'int'", line);
+      }
+      return { kind: "int", value: BigInt(initialized.value) };
+    }
+    this.fail(`cannot convert '${initialized.kind}' to '${expected}'`, line);
   }
 }
 
