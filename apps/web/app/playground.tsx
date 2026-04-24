@@ -1,14 +1,41 @@
 "use client";
 
+import {
+  autocompletion,
+  acceptCompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completeAnyWord,
+  completeFromList,
+  completionKeymap,
+} from "@codemirror/autocomplete";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands";
 import { cpp } from "@codemirror/lang-cpp";
+import { bracketMatching, foldGutter, indentOnInput } from "@codemirror/language";
+import {
+  gotoLine,
+  highlightSelectionMatches,
+  openSearchPanel,
+  search,
+  searchKeymap,
+} from "@codemirror/search";
 import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
   GutterMarker,
+  crosshairCursor,
+  drawSelection,
   gutter,
   highlightActiveLineGutter,
   lineNumbers,
+  rectangularSelection,
+  keymap,
 } from "@codemirror/view";
 import {
   AlertCircle,
@@ -118,6 +145,29 @@ const executionMarker = new ExecutionMarker();
 
 const breakpointCompartment = new Compartment();
 const executionCompartment = new Compartment();
+const cppCompletionSource = completeFromList([
+  { label: "int", type: "type", boost: 10 },
+  { label: "long long", type: "type", boost: 10 },
+  { label: "bool", type: "type", boost: 10 },
+  { label: "string", type: "type", boost: 10 },
+  { label: "vector", type: "type", boost: 10 },
+  { label: "if", type: "keyword", boost: 8 },
+  { label: "else", type: "keyword", boost: 8 },
+  { label: "for", type: "keyword", boost: 8 },
+  { label: "while", type: "keyword", boost: 8 },
+  { label: "break", type: "keyword", boost: 8 },
+  { label: "continue", type: "keyword", boost: 8 },
+  { label: "return", type: "keyword", boost: 8 },
+  { label: "main", type: "function", boost: 9 },
+  { label: "cin", type: "variable", boost: 7 },
+  { label: "cout", type: "variable", boost: 7 },
+  { label: "endl", type: "constant", boost: 6 },
+  { label: "push_back", type: "method", boost: 6 },
+  { label: "pop_back", type: "method", boost: 6 },
+  { label: "size", type: "method", boost: 6 },
+  { label: "back", type: "method", boost: 6 },
+  { label: "front", type: "method", boost: 6 },
+]);
 
 function createBreakpointGutter(
   breakpoints: number[],
@@ -242,6 +292,44 @@ const editorTheme = EditorView.theme({
   ".cm-focused": {
     outline: "none",
   },
+  ".cm-panels": {
+    backgroundColor: "var(--bg3)",
+    color: "var(--text)",
+    borderBottom: "1px solid var(--border)",
+  },
+  ".cm-panel.cm-search": {
+    padding: "6px 8px",
+    gap: "6px",
+    fontFamily: "var(--font-ui)",
+  },
+  ".cm-panel.cm-search input, .cm-panel.cm-search button, .cm-gotoLineDialog input, .cm-gotoLineDialog button": {
+    font: "inherit",
+  },
+  ".cm-textfield": {
+    backgroundColor: "var(--bg2)",
+    color: "var(--text)",
+    border: "1px solid var(--border)",
+    borderRadius: "4px",
+    padding: "3px 6px",
+  },
+  ".cm-button": {
+    backgroundColor: "var(--bg4)",
+    color: "var(--text)",
+    border: "1px solid var(--border)",
+    borderRadius: "4px",
+    padding: "3px 8px",
+  },
+  ".cm-button:hover": {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  ".cm-searchMatch": {
+    backgroundColor: "rgba(220, 220, 170, 0.24)",
+    outline: "1px solid rgba(220, 220, 170, 0.35)",
+  },
+  ".cm-searchMatch.cm-searchMatch-selected": {
+    backgroundColor: "rgba(79, 193, 255, 0.24)",
+    outline: "1px solid rgba(79, 193, 255, 0.35)",
+  },
 });
 
 export function Playground() {
@@ -333,10 +421,36 @@ export function Playground() {
     const state = EditorState.create({
       doc: source,
       extensions: [
+        EditorState.allowMultipleSelections.of(true),
+        EditorView.clickAddsSelectionRange.of((event) => event.altKey),
         lineNumbers(),
+        foldGutter(),
         highlightActiveLineGutter(),
         EditorView.lineWrapping,
+        drawSelection(),
+        crosshairCursor({ key: "Shift" }),
+        rectangularSelection({ eventFilter: (event) => event.altKey && event.shiftKey }),
         cpp(),
+        history(),
+        indentOnInput(),
+        bracketMatching(),
+        closeBrackets(),
+        search({ top: true }),
+        highlightSelectionMatches(),
+        autocompletion({
+          override: [cppCompletionSource, completeAnyWord],
+        }),
+        keymap.of([
+          { key: "Mod-f", run: openSearchPanel },
+          { key: "Mod-l", run: gotoLine },
+          { key: "Tab", run: acceptCompletion },
+          indentWithTab,
+          ...closeBracketsKeymap,
+          ...historyKeymap,
+          ...completionKeymap,
+          ...searchKeymap,
+          ...defaultKeymap,
+        ]),
         dracula,
         editorTheme,
         breakpointCompartment.of(createBreakpointGutter(breakpoints, onToggleBreakpoint)),
