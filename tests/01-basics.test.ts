@@ -93,6 +93,21 @@ int main() {
     expect(result.output.stdout).toBe("2\n7\n5\n-7\n8\n4\n0\n");
   });
 
+  it("bitwise edge precedence and associativity", () => {
+    const source = `
+int main() {
+  cout << (8 >> 1 >> 1) << "\\n";
+  cout << (1 | 2 & 4) << "\\n";
+  cout << ((1 | 2) & 4) << "\\n";
+  cout << (~(-1)) << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("2\n1\n0\n0\n");
+  });
+
   it("cout with multiple expressions", () => {
     const source = `
 int main() {

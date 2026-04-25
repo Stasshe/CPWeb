@@ -157,6 +157,43 @@ int main() {
     expect(result.error?.message).toMatch(/type mismatch: expected int/);
   });
 
+  it("unary bitwise not requires int operand", () => {
+    const source = `
+int main() {
+  bool flag = false;
+  return ~flag;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("error");
+    expect(result.error?.message).toMatch(/type mismatch: expected int/);
+  });
+
+  it("left shift with negative count is runtime error", () => {
+    const source = `
+int main() {
+  int x = 3;
+  cout << (x << -2) << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("error");
+    expect(result.error?.message).toMatch(/shift count must be non-negative/);
+  });
+
+  it("bitwise expressions reject bool operands in mixed precedence", () => {
+    const source = `
+int main() {
+  bool b = true;
+  return 1 | b;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("error");
+    expect(result.error?.message).toMatch(/type mismatch: expected int/);
+  });
+
   it("rejects unsupported preprocessor directives", () => {
     const source = `
 #ifdef LOCAL
