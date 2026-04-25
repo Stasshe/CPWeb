@@ -118,4 +118,50 @@ int main() {
     expect(done.status).toBe("done");
     expect(done.output.stdout).toBe("3\n");
   });
+
+  it("stepInto advances through cin targets one by one while stepOver keeps cin as one statement", () => {
+    const source = `
+int main() {
+  int a = 0;
+  int b = 0;
+  int c = 0;
+  cin >> a >> b >> c;
+  cout << a << b << c << "\\n";
+  return 0;
+}
+`;
+    const session = new DebugSession(source, "10 20 30");
+
+    expect(session.stepInto().currentLine).toBe(3);
+    expect(session.stepOver().currentLine).toBe(4);
+    expect(session.stepOver().currentLine).toBe(5);
+    expect(session.stepOver().currentLine).toBe(6);
+
+    const cinStatement = session.stepInto();
+    expect(cinStatement.currentLine).toBe(6);
+    expect(cinStatement.localVars[0]?.vars).toEqual([
+      { name: "a", kind: "int", value: "10" },
+      { name: "b", kind: "int", value: "0" },
+      { name: "c", kind: "int", value: "0" },
+    ]);
+
+    const afterFirstTarget = session.stepInto();
+    expect(afterFirstTarget.currentLine).toBe(6);
+    expect(afterFirstTarget.localVars[0]?.vars).toEqual([
+      { name: "a", kind: "int", value: "10" },
+      { name: "b", kind: "int", value: "20" },
+      { name: "c", kind: "int", value: "0" },
+    ]);
+
+    const afterSecondTarget = session.stepInto();
+    expect(afterSecondTarget.currentLine).toBe(6);
+    expect(afterSecondTarget.localVars[0]?.vars).toEqual([
+      { name: "a", kind: "int", value: "10" },
+      { name: "b", kind: "int", value: "20" },
+      { name: "c", kind: "int", value: "30" },
+    ]);
+
+    const nextStatement = session.stepInto();
+    expect(nextStatement.currentLine).toBe(7);
+  });
 });

@@ -302,6 +302,7 @@ class Interpreter extends InterpreterEvaluator {
           }
           this.inputIndex += 1;
           this.assignFromInput(target, token, stmt.line);
+          this.step(target.line, "expression");
         }
         return;
     }
