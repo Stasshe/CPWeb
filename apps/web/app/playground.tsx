@@ -335,21 +335,24 @@ const editorTheme = EditorView.theme({
     boxShadow: "0 0 0 1px rgba(0, 0, 0, 0.35)",
   },
   ".cm-execution-marker": {
-    color: "var(--accent)",
+    color: "#ffdf5d",
     fontSize: "10px",
     lineHeight: "1",
+    textShadow: "0 0 10px rgba(255, 223, 93, 0.45)",
   },
   ".cm-execution-line": {
-    backgroundColor: "rgba(79, 193, 255, 0.1)",
+    backgroundColor: "rgba(0, 160, 255, 0.22)",
   },
   ".cm-execution-range": {
     borderRadius: "2px",
   },
   ".cm-execution-range-1": {
-    backgroundColor: "rgba(79, 193, 255, 0.18)",
+    backgroundColor: "rgba(0, 200, 255, 0.42)",
+    boxShadow: "inset 0 0 0 1px rgba(140, 235, 255, 0.35)",
   },
   ".cm-execution-range-2": {
-    backgroundColor: "rgba(255, 206, 84, 0.26)",
+    backgroundColor: "rgba(255, 196, 0, 0.48)",
+    boxShadow: "inset 0 0 0 1px rgba(255, 232, 150, 0.45)",
   },
   ".cm-focused": {
     outline: "none",
