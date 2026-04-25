@@ -113,6 +113,7 @@ export function Playground() {
 
   useEffect(() => {
     if (!editorHostRef.current) return;
+    if (!hasRestored) return;
 
     const state = createPlaygroundEditorState({
       doc: source,
@@ -135,7 +136,7 @@ export function Playground() {
       editorViewRef.current = null;
       view.destroy();
     };
-  }, []);
+  }, [hasRestored]);
 
   useEffect(() => {
     const view = editorViewRef.current;
@@ -175,6 +176,14 @@ export function Playground() {
     if (!hasRestored) return;
     window.localStorage.setItem(storageKeys.input, input);
   }, [hasRestored, input]);
+
+  if (!hasRestored) {
+    return (
+      <div className="playground-loading">
+        <span>Loading...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="ide">

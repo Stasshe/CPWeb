@@ -47,6 +47,15 @@ pre, code, textarea { font-family: var(--font-mono); }
   overflow: hidden;
 }
 
+.playground-loading {
+  display: grid;
+  place-items: center;
+  height: 100vh;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 /* ── Left Panel ── */
 .left {
   display: flex;
