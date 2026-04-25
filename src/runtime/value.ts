@@ -1,9 +1,4 @@
-import type {
-  PrimitiveTypeNode,
-  ReferenceTypeNode,
-  TypeNode,
-  VectorTypeNode,
-} from "../types";
+import type { PrimitiveTypeNode, ReferenceTypeNode, TypeNode, VectorTypeNode } from "../types";
 
 export type RuntimeLocation =
   | { kind: "binding"; scope: Map<string, RuntimeValue>; name: string; type: TypeNode }

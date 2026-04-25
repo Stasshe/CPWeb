@@ -235,7 +235,10 @@ export abstract class InterpreterRuntime {
     }
     if (current.kind === "uninitialized") {
       const expectedType = current.expectedType;
-      if (expectedType.kind === "PrimitiveType" && (expectedType.name === "int" || expectedType.name === "long long")) {
+      if (
+        expectedType.kind === "PrimitiveType" &&
+        (expectedType.name === "int" || expectedType.name === "long long")
+      ) {
         this.writeAssignTarget(target, { kind: "int", value: BigInt(token) }, line);
       } else if (expectedType.kind === "PrimitiveType" && expectedType.name === "double") {
         this.writeAssignTarget(target, { kind: "double", value: Number(token) }, line);
@@ -377,7 +380,12 @@ export abstract class InterpreterRuntime {
       if (value.kind === "reference") {
         return value.target;
       }
-      return { kind: "binding", scope: this.globals, name, type: this.runtimeValueToType(value, line) };
+      return {
+        kind: "binding",
+        scope: this.globals,
+        name,
+        type: this.runtimeValueToType(value, line),
+      };
     }
 
     this.fail(`'${name}' was not declared in this scope`, line);
@@ -426,7 +434,11 @@ export abstract class InterpreterRuntime {
       this.fail("cannot assign to array value directly", line);
     }
     if (current.kind === "pointer") {
-      return this.assertType({ kind: "PointerType", pointeeType: current.pointeeType }, value, line);
+      return this.assertType(
+        { kind: "PointerType", pointeeType: current.pointeeType },
+        value,
+        line,
+      );
     }
     if (current.kind === "reference") {
       this.writeLocation(current.target, value, line);
@@ -738,7 +750,9 @@ export abstract class InterpreterRuntime {
       case "PointerType":
         return right.kind === "PointerType" && this.sameType(left.pointeeType, right.pointeeType);
       case "ReferenceType":
-        return right.kind === "ReferenceType" && this.sameType(left.referredType, right.referredType);
+        return (
+          right.kind === "ReferenceType" && this.sameType(left.referredType, right.referredType)
+        );
     }
   }
 
@@ -775,7 +789,10 @@ export abstract class InterpreterRuntime {
           this.fail("type mismatch: expected string", line);
         }
         if (location.index < 0 || location.index >= parent.value.length) {
-          this.fail(`index ${location.index.toString()} out of range for string of size ${parent.value.length}`, line);
+          this.fail(
+            `index ${location.index.toString()} out of range for string of size ${parent.value.length}`,
+            line,
+          );
         }
         return { kind: "string", value: parent.value[location.index] ?? "" };
       }
@@ -823,7 +840,7 @@ export abstract class InterpreterRuntime {
     }
   }
 
-  protected runtimeValueToType(value: RuntimeValue, line: number): TypeNode {
+  protected runtimeValueToType(value: RuntimeValue, _line: number): TypeNode {
     switch (value.kind) {
       case "int":
         return { kind: "PrimitiveType", name: "int" };

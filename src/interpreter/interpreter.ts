@@ -12,8 +12,8 @@ import type {
   RuntimeErrorInfo,
   StatementNode,
 } from "../types";
-import { InterpreterEvaluator } from "./interpreter-evaluator";
 import type { RuntimeArgument } from "./interpreter-evaluator";
+import { InterpreterEvaluator } from "./interpreter-evaluator";
 import {
   buildDebugInfoView,
   type InterpreterOptions,
@@ -248,7 +248,11 @@ class Interpreter extends InterpreterEvaluator {
               const value =
                 initDecl.initializer === null
                   ? this.defaultValueForDeclaredType(initDecl.type, false, initDecl.line)
-                  : this.initializeDeclaredValue(initDecl.type, initDecl.initializer, initDecl.line);
+                  : this.initializeDeclaredValue(
+                      initDecl.type,
+                      initDecl.initializer,
+                      initDecl.line,
+                    );
               this.define(initDecl.name, value);
             }
           } else if (stmt.init.kind === "expr") {
@@ -398,7 +402,11 @@ class Interpreter extends InterpreterEvaluator {
       }));
     }
     if (value.kind === "string") {
-      if (source.kind !== "Identifier" && source.kind !== "IndexExpr" && source.kind !== "DerefExpr") {
+      if (
+        source.kind !== "Identifier" &&
+        source.kind !== "IndexExpr" &&
+        source.kind !== "DerefExpr"
+      ) {
         this.fail("range-based for over string requires an assignable source", line);
       }
       const parent = this.resolveAssignTargetLocation(source, line);

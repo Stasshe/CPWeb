@@ -30,7 +30,12 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         return this.resolve(expr.name, expr.line);
       case "AddressOfExpr": {
         const location = this.resolveAssignTargetLocation(expr.target, expr.line);
-        return { kind: "pointer", pointeeType: location.kind === "string" ? { kind: "PrimitiveType", name: "string" } : location.type, target: location };
+        return {
+          kind: "pointer",
+          pointeeType:
+            location.kind === "string" ? { kind: "PrimitiveType", name: "string" } : location.type,
+          target: location,
+        };
       }
       case "DerefExpr": {
         const location = this.resolvePointerLocation(expr.pointer, expr.line);
@@ -89,10 +94,17 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         if (!this.isAssignableTarget(expr.operand)) {
           this.fail("increment/decrement target must be a variable", expr.line);
         }
-        const current = this.expectInt(this.readLocation(this.resolveAssignTargetLocation(expr.operand, expr.line), expr.line), expr.line);
+        const current = this.expectInt(
+          this.readLocation(this.resolveAssignTargetLocation(expr.operand, expr.line), expr.line),
+          expr.line,
+        );
         const delta = expr.operator === "++" ? 1n : -1n;
         const updated: RuntimeValue = { kind: "int", value: current.value + delta };
-        this.writeLocation(this.resolveAssignTargetLocation(expr.operand, expr.line), updated, expr.line);
+        this.writeLocation(
+          this.resolveAssignTargetLocation(expr.operand, expr.line),
+          updated,
+          expr.line,
+        );
         return expr.isPostfix ? current : updated;
       }
       case "BinaryExpr":
@@ -119,7 +131,11 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
             expr.line,
           );
         }
-        this.writeLocation(this.resolveAssignTargetLocation(expr.target, expr.line), assigned, expr.line);
+        this.writeLocation(
+          this.resolveAssignTargetLocation(expr.target, expr.line),
+          assigned,
+          expr.line,
+        );
         return assigned;
       }
     }
@@ -152,11 +168,19 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     return pointer.target;
   }
 
-  private resolveIndexedLocation(targetExpr: ExprNode, indexExpr: ExprNode, line: number): RuntimeLocation {
+  private resolveIndexedLocation(
+    targetExpr: ExprNode,
+    indexExpr: ExprNode,
+    line: number,
+  ): RuntimeLocation {
     const targetValue = this.ensureInitialized(this.evaluateExpr(targetExpr), line, "value");
     const index = this.expectInt(this.evaluateExpr(indexExpr), line).value;
     if (targetValue.kind === "string") {
-      if (targetExpr.kind !== "Identifier" && targetExpr.kind !== "IndexExpr" && targetExpr.kind !== "DerefExpr") {
+      if (
+        targetExpr.kind !== "Identifier" &&
+        targetExpr.kind !== "IndexExpr" &&
+        targetExpr.kind !== "DerefExpr"
+      ) {
         this.fail("string index target must be assignable", line);
       }
       return {
@@ -671,8 +695,10 @@ function compareValues(
       );
     case "array":
       fail("array comparison is not supported", line);
+      return false;
     case "reference":
       fail("reference comparison is not supported", line);
+      return false;
   }
 }
 
@@ -756,7 +782,11 @@ function sameLocation(left: RuntimeLocation | null, right: RuntimeLocation | nul
     case "array":
       return right.kind === "array" && left.ref === right.ref && left.index === right.index;
     case "string":
-      return right.kind === "string" && left.index === right.index && sameLocation(left.parent, right.parent);
+      return (
+        right.kind === "string" &&
+        left.index === right.index &&
+        sameLocation(left.parent, right.parent)
+      );
   }
 }
 

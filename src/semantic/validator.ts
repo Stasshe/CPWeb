@@ -8,12 +8,7 @@ import type {
   StatementNode,
   TypeNode,
 } from "../types";
-import {
-  isPointerType,
-  isPrimitiveType,
-  isReferenceType,
-  typeToString,
-} from "../types";
+import { isPointerType, isPrimitiveType, isReferenceType, typeToString } from "../types";
 
 type ValidationContext = {
   errors: CompileError[];
@@ -280,7 +275,10 @@ function validateDecl(
 
 function validateRangeFor(stmt: RangeForStmtNode, context: ValidationContext): void {
   const sourceType = validateExpr(stmt.source, context);
-  const elementType = sourceType === null ? null : getIterableElementType(sourceType, stmt.source.line, stmt.source.col, context);
+  const elementType =
+    sourceType === null
+      ? null
+      : getIterableElementType(sourceType, stmt.source.line, stmt.source.col, context);
   const itemType = stmt.itemType ?? elementType;
 
   if (itemType === null) {
@@ -508,14 +506,8 @@ function inferBinaryType(
     expr.operator === ">" ||
     expr.operator === ">="
   ) {
-    if (
-      (left !== null && isPointerType(left)) ||
-      (right !== null && isPointerType(right))
-    ) {
-      if (
-        expr.operator !== "==" &&
-        expr.operator !== "!="
-      ) {
+    if ((left !== null && isPointerType(left)) || (right !== null && isPointerType(right))) {
+      if (expr.operator !== "==" && expr.operator !== "!=") {
         pushError(context, expr.line, expr.col, "pointer comparison only supports == and !=");
       }
       if (
@@ -844,8 +836,8 @@ function resolveSymbol(
 ): TypeNode | null {
   for (let i = context.scopes.length - 1; i >= 0; i -= 1) {
     const scope = context.scopes[i];
-  if (scope?.has(name)) {
-    return scope.get(name) ?? null;
+    if (scope?.has(name)) {
+      return scope.get(name) ?? null;
     }
   }
   pushError(context, line, col, `'${name}' was not declared in this scope`);
@@ -1029,10 +1021,11 @@ function validateReferenceBinding(
   expr: ExprNode,
   expected: TypeNode,
   context: ValidationContext,
+  message = "reference initializer must be an lvalue",
 ): void {
   const actual = validateExpr(expr, context);
   if (!isAssignableExpr(expr)) {
-    pushError(context, expr.line, expr.col, "reference initializer must be an lvalue");
+    pushError(context, expr.line, expr.col, message);
     return;
   }
   if (actual !== null && !isAssignable(actual, expected)) {
@@ -1055,7 +1048,12 @@ function validateArgumentAgainstParam(
     return;
   }
   if (isReferenceType(paramType)) {
-    validateReferenceBinding(arg, paramType.referredType, context);
+    validateReferenceBinding(
+      arg,
+      paramType.referredType,
+      context,
+      "reference argument must be an lvalue",
+    );
     return;
   }
   if (

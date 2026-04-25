@@ -1,5 +1,4 @@
 import type {
-  ArrayTypeNode,
   ArrayDeclNode,
   AssignTargetNode,
   BlockStmtNode,
@@ -10,7 +9,6 @@ import type {
   FunctionDeclNode,
   PrimitiveTypeNode,
   RangeForStmtNode,
-  ReferenceTypeNode,
   SourceRange,
   StatementNode,
   Token,
@@ -448,13 +446,20 @@ export abstract class BaseParser {
     return declarations;
   }
 
-  protected parseSingleDeclarator(type: TypeNode): VarDeclNode | ArrayDeclNode | VectorDeclNode | null {
+  protected parseSingleDeclarator(
+    type: TypeNode,
+  ): VarDeclNode | ArrayDeclNode | VectorDeclNode | null {
     const declarator = this.parseNamedDeclarator(type, { allowUnsizedArrays: false });
     if (declarator === null) {
       return null;
     }
     if (declarator.dimensions.length > 0) {
-      return this.finishArrayDecl(declarator.type, declarator.nameToken, declarator.dimensions, false);
+      return this.finishArrayDecl(
+        declarator.type,
+        declarator.nameToken,
+        declarator.dimensions,
+        false,
+      );
     }
     if (declarator.type.kind === "VectorType") {
       return this.finishVectorDecl(declarator.type, declarator.nameToken, false);
@@ -942,7 +947,11 @@ export abstract class BaseParser {
     };
   }
 
-  private parseRangeForBinding(): { name: string; type: TypeNode | null; byReference: boolean } | null {
+  private parseRangeForBinding(): {
+    name: string;
+    type: TypeNode | null;
+    byReference: boolean;
+  } | null {
     if (this.matchKeyword("auto")) {
       const byReference = this.matchSymbol("&");
       const nameToken = this.consumeIdentifier("expected loop variable name");
@@ -966,9 +975,7 @@ export abstract class BaseParser {
     return {
       name: declarator.nameToken.text,
       type:
-        declarator.type.kind === "ReferenceType"
-          ? declarator.type.referredType
-          : declarator.type,
+        declarator.type.kind === "ReferenceType" ? declarator.type.referredType : declarator.type,
       byReference: declarator.type.kind === "ReferenceType",
     };
   }
