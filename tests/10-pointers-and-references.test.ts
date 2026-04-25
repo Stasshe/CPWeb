@@ -216,6 +216,20 @@ int main() {
     expect(result.output.stdout).toBe("3\n");
   });
 
+  it("supports pointer subtraction inside the same string", () => {
+    const source = `
+int main() {
+  string s = "abcdef";
+  int diff = &s[5] - &s[1];
+  cout << diff << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("4\n");
+  });
+
   it("fails pointer subtraction for different arrays", () => {
     const source = `
 int main() {
@@ -230,6 +244,20 @@ int main() {
     const result = compileAndRun(source);
     expect(result.status).toBe("error");
     expect(result.error?.message).toMatch(/same array/);
+  });
+
+  it("fails pointer subtraction for different strings", () => {
+    const source = `
+int main() {
+  string a = "ab";
+  string b = "cd";
+  cout << (&a[1] - &b[0]) << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("error");
+    expect(result.error?.message).toMatch(/same string/);
   });
 
   it("fails pointer arithmetic on scalar pointer", () => {
@@ -263,6 +291,19 @@ int main() {
     expect(result.output.stdout).toBe("10\n10\n");
   });
 
+  it("fails pointer arithmetic on null pointers", () => {
+    const source = `
+int main() {
+  int *p = nullptr;
+  p = p + 1;
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("error");
+    expect(result.error?.message).toMatch(/pointer arithmetic on null pointer/);
+  });
+
   it("allows one-past pointer creation but fails on dereference", () => {
     const source = `
 int main() {
@@ -276,6 +317,21 @@ int main() {
     const result = compileAndRun(source);
     expect(result.status).toBe("error");
     expect(result.error?.message).toMatch(/out of range/);
+  });
+
+  it("allows one-past pointer subtraction against begin", () => {
+    const source = `
+int main() {
+  int a[4] = {1, 2, 3, 4};
+  int *begin = &a[0];
+  int *end = begin + 4;
+  cout << (end - begin) << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("4\n");
   });
 
   it("supports null pointer constants 0 and nullptr", () => {

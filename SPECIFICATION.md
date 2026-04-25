@@ -735,8 +735,6 @@ type NodeBase = { line: number; col: number }
 
 ### 将来対応
 
-- 2次元配列（`int dp[1001][1001]`、`vector<vector<int>>`）
-- ビット演算子（`&`, `|`, `^`, `~`, `<<`, `>>`）
 - 三項演算子（`? :`）
 - 条件付きコンパイル（`#if`, `#ifdef`, `#ifndef`, `#else`, `#endif`）
 - その他のプリプロセッサディレクティブ
