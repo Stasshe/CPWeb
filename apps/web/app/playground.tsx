@@ -661,13 +661,7 @@ export function Playground() {
               <div className="empty-row">No stdin tokens</div>
             ) : (
               <div className="runtime-input-wrap">
-                <textarea
-                  readOnly
-                  spellCheck={false}
-                  className="runtime-input"
-                  aria-label="runtime input state"
-                  value={execution.input.tokens.slice(execution.input.nextIndex).join(" ")}
-                />
+                {execution.input.tokens.slice(execution.input.nextIndex).join(" ")}
               </div>
             )}
           </div>
