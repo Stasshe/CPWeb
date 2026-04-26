@@ -32,6 +32,29 @@ type VariableValueTreeProps = {
   valueKey: string;
 };
 
+type InputDisplayPart = {
+  text: string;
+  tokenIndex: number;
+};
+
+function buildInputDisplayParts(input: string): InputDisplayPart[] {
+  if (input.length === 0) {
+    return [];
+  }
+
+  const parts: InputDisplayPart[] = [];
+  const pattern = /\S+\s*/g;
+
+  for (const [tokenIndex, match] of Array.from(input.matchAll(pattern)).entries()) {
+    const text = match[0];
+    if (text !== undefined) {
+      parts.push({ text, tokenIndex });
+    }
+  }
+
+  return parts;
+}
+
 function ExpandIcon({ expanded }: { expanded: boolean }) {
   return expanded ? (
     <ChevronDown size={10} className="shrink-0 text-[var(--text-dim)]" />
@@ -213,6 +236,7 @@ function VariableRow({
 
 type DebugSidebarProps = {
   execution: DebugState;
+  input: string;
   breakpoints: number[];
   isDirty: boolean;
   isPending: boolean;
@@ -228,6 +252,7 @@ type DebugSidebarProps = {
 
 export function DebugSidebar({
   execution,
+  input,
   breakpoints,
   isDirty,
   isPending,
@@ -262,6 +287,7 @@ export function DebugSidebar({
     breakpoints.length
   );
   const continueLabel = execution.status === "paused" ? "Continue" : "Run to End";
+  const inputDisplayParts = buildInputDisplayParts(input);
 
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden border-b border-[var(--border)] bg-[var(--bg2)] lg:border-r lg:border-b-0">
@@ -344,9 +370,13 @@ export function DebugSidebar({
           {execution.input.tokens.length === 0 ? (
             <EmptyState>No stdin tokens</EmptyState>
           ) : (
-            <div className="px-2 pb-2 pt-1.5 font-[var(--font-mono)]">
-              {execution.input.tokens.slice(execution.input.nextIndex).join(" ")}
-            </div>
+            <pre className="m-0 px-2 pb-2 pt-1.5 whitespace-pre-wrap break-all font-[var(--font-mono)] text-[11px] leading-[1.5] text-[var(--text)]">
+              {inputDisplayParts
+                .filter((part) => part.tokenIndex >= execution.input.nextIndex)
+                .map((part, index) => (
+                  <span key={`token-${part.tokenIndex}-${index}`}>{part.text}</span>
+                ))}
+            </pre>
           )}
         </div>
 

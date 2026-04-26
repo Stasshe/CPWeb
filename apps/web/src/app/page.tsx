@@ -36,6 +36,7 @@ export default function Home() {
     <div className="grid h-screen grid-cols-1 grid-rows-[minmax(280px,38vh)_1fr] overflow-hidden lg:grid-cols-[minmax(320px,4fr)_minmax(0,6fr)] lg:grid-rows-[100vh]">
       <DebugSidebar
         execution={execution}
+        input={input}
         breakpoints={breakpoints}
         isDirty={isDirty}
         isPending={isPending}
