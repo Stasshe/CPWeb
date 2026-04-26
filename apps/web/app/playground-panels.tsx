@@ -4,11 +4,14 @@ import {
   ArrowLeft,
   ArrowRight,
   BugPlay,
+  ChevronDown,
+  ChevronRight,
   CirclePlay,
   RotateCcw,
   StepBack,
   StepForward,
 } from "lucide-react";
+import { useState } from "react";
 import type { DebugState } from "@/types";
 import { getArrayRef, getScopeTitle } from "./playground-state";
 
@@ -40,28 +43,82 @@ export function DebugSidebar({
   onStepOut: () => void;
 }) {
   const st = execution.status;
+  const [expandedArrays, setExpandedArrays] = useState<Set<string>>(new Set());
+
+  const toggleExpand = (key: string) => {
+    setExpandedArrays((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const COLLAPSE_THRESHOLD = 6;
 
   const renderVarRow = (v: { name: string; kind: string; value: string }, scopeKey: string) => {
     const arrayRef = v.kind === "array" ? getArrayRef(v.value) : null;
-    const arrayView = arrayRef === null ? null : arraysByRef.get(arrayRef);
+    const arrayView = arrayRef === null ? null : (arraysByRef.get(arrayRef) ?? null);
+    const expandKey = `${scopeKey}-${v.name}`;
+    const isExpanded = expandedArrays.has(expandKey);
+    const needsExpand = arrayView !== null && arrayView.values.length > COLLAPSE_THRESHOLD;
 
     return (
-      <div key={`${scopeKey}-${v.name}`}>
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 px-2 py-px pl-5 font-[var(--font-mono)] text-[11px] hover:bg-[var(--hl-line)]">
-          <span className="truncate text-[var(--accent2)]">{v.name}</span>
+      <div key={expandKey}>
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: role set conditionally via prop */}
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: onKeyDown provided when interactive */}
+        <div
+          className={`grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 px-2 py-px pl-5 font-[var(--font-mono)] text-[11px] hover:bg-[var(--hl-line)] ${needsExpand ? "cursor-pointer" : ""}`}
+          role={needsExpand ? "button" : undefined}
+          tabIndex={needsExpand ? 0 : undefined}
+          onClick={needsExpand ? () => toggleExpand(expandKey) : undefined}
+          onKeyDown={
+            needsExpand
+              ? (e) => {
+                  if (e.key === "Enter" || e.key === " ") toggleExpand(expandKey);
+                }
+              : undefined
+          }
+        >
+          <span className="flex items-center gap-0.5 truncate text-[var(--accent2)]">
+            {needsExpand &&
+              (isExpanded ? (
+                <ChevronDown size={10} className="shrink-0 text-[var(--text-dim)]" />
+              ) : (
+                <ChevronRight size={10} className="shrink-0 text-[var(--text-dim)]" />
+              ))}
+            {v.name}
+          </span>
           <span className="text-[10px] text-[var(--text-dim)]">
             {arrayView ? (arrayView.dynamic ? "vector" : "array") : v.kind}
+            {arrayView ? `[${arrayView.values.length}]` : ""}
           </span>
           <span
             className={`max-w-[220px] truncate text-right ${
-              arrayView
-                ? "text-[10px] text-[var(--purple)]"
-                : "text-[var(--orange)]"
+              arrayView ? "text-[10px] text-[var(--purple)]" : "text-[var(--orange)]"
             }`}
           >
-            {arrayView ? `[${arrayView.values.join(", ")}]` : v.value}
+            {arrayView
+              ? needsExpand && !isExpanded
+                ? `[${arrayView.values.slice(0, COLLAPSE_THRESHOLD).join(", ")}, …]`
+                : `[${arrayView.values.join(", ")}]`
+              : v.value}
           </span>
         </div>
+        {arrayView && needsExpand && isExpanded && (
+          <div className="ml-8 border-l border-[var(--border)] pl-2 pb-1">
+            {arrayView.values.map((val, i) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: array index is the display label
+                key={i}
+                className="grid grid-cols-[auto_1fr] gap-2 py-px font-[var(--font-mono)] text-[10px] hover:bg-[var(--hl-line)]"
+              >
+                <span className="text-[var(--text-dim)]">[{i}]</span>
+                <span className="text-[var(--orange)]">{val}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -125,7 +182,9 @@ export function DebugSidebar({
 
       <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--border)] bg-[var(--bg2)] px-2 py-[3px] text-[11px] text-[var(--text-dim)]">
         <div className="status-dot" data-status={st} />
-        <span className="status-label" data-status={st}>{st}</span>
+        <span className="status-label" data-status={st}>
+          {st}
+        </span>
         <span className="ml-auto text-[10px] text-[var(--text-dim)]">
           L{execution.currentLine}
           {" · "}
@@ -151,7 +210,9 @@ export function DebugSidebar({
             </span>
           </div>
           {execution.input.tokens.length === 0 ? (
-            <div className="px-5 py-[3px] text-[11px] italic text-[var(--text-dim)]">No stdin tokens</div>
+            <div className="px-5 py-[3px] text-[11px] italic text-[var(--text-dim)]">
+              No stdin tokens
+            </div>
           ) : (
             <div className="px-2 pb-2 pt-1.5 font-[var(--font-mono)]">
               {execution.input.tokens.slice(execution.input.nextIndex).join(" ")}
@@ -167,7 +228,9 @@ export function DebugSidebar({
             </span>
           </div>
           {execution.callStack.length === 0 ? (
-            <div className="px-5 py-[3px] text-[11px] italic text-[var(--text-dim)]">No active frames</div>
+            <div className="px-5 py-[3px] text-[11px] italic text-[var(--text-dim)]">
+              No active frames
+            </div>
           ) : (
             <ul className="list-none">
               {[...execution.callStack].reverse().map((frame, i) => (
@@ -193,7 +256,9 @@ export function DebugSidebar({
             </span>
           </div>
           {execution.localVars.length === 0 ? (
-            <div className="px-5 py-[3px] text-[11px] italic text-[var(--text-dim)]">No local variables</div>
+            <div className="px-5 py-[3px] text-[11px] italic text-[var(--text-dim)]">
+              No local variables
+            </div>
           ) : (
             execution.localVars.map((scope, idx) => (
               <div key={`${scope.name}-${idx}`} className="py-0.5">

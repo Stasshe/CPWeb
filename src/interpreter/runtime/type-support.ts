@@ -211,6 +211,8 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
         return `(${this.serializeValue(value.first)}, ${this.serializeValue(value.second)})`;
       case "tuple":
         return `(${value.values.map((element) => this.serializeValue(element)).join(", ")})`;
+      case "bool":
+        return value.value ? "true" : "false";
       default:
         return stringifyValue(value);
     }

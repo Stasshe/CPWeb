@@ -10,7 +10,8 @@ export class RuntimeTrap extends Error {
 
   constructor(message: string, stackFrames: RuntimeStackFrame[]) {
     super(message);
-    this.stackFrames = stackFrames.length > 0 ? stackFrames : [{ functionName: "<runtime>", line: 1 }];
+    this.stackFrames =
+      stackFrames.length > 0 ? stackFrames : [{ functionName: "<runtime>", line: 1 }];
     const topFrame = this.stackFrames[0] as RuntimeStackFrame;
     this.line = topFrame.line;
     this.functionName = topFrame.functionName;

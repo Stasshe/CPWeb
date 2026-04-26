@@ -194,11 +194,17 @@ int main() {
 `;
     const result = compileAndRun(source);
     expect(result.status).toBe("error");
-    expect(result.error?.message).toMatch(/Runtime Error: index 2 out of range for array of size 1/);
+    expect(result.error?.message).toMatch(
+      /Runtime Error: index 2 out of range for array of size 1/,
+    );
     expect(result.error?.message).toMatch(/at crash:/);
     expect(result.error?.message).toMatch(/at dfs:/);
     expect(result.error?.message).toMatch(/at main:/);
     expect(result.error?.summary).toBe("index 2 out of range for array of size 1");
-    expect(result.error?.stack.map((frame) => frame.functionName)).toEqual(["crash", "dfs", "main"]);
+    expect(result.error?.stack.map((frame) => frame.functionName)).toEqual([
+      "crash",
+      "dfs",
+      "main",
+    ]);
   });
 });
