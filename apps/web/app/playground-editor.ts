@@ -4,7 +4,6 @@ import {
   closeBrackets,
   closeBracketsKeymap,
   completeAnyWord,
-  completeFromList,
   completionKeymap,
   completionStatus,
 } from "@codemirror/autocomplete";
@@ -38,6 +37,8 @@ import {
 } from "@codemirror/view";
 import type { DebugExecutionRange } from "@/types";
 import { dracula } from "thememirror";
+import type { CompletionSource } from "@codemirror/autocomplete";
+
 
 const acMainSnippet = `#include <bits/stdc++.h>
 using namespace std;
@@ -45,6 +46,55 @@ using namespace std;
 int main() {
     
 }`;
+
+
+const cppCompletionSource: CompletionSource = (context) => {
+  const word = context.matchBefore(/\w*/);
+  if (!word || (word.from === word.to && !context.explicit)) return null;
+
+  return {
+    from: word.from,
+    options: [
+      {
+        label: "acmain",
+        type: "keyword",
+        boost: 15,
+        info: "AtC main template",
+        apply: (view, _completion, from, to) => {
+          const cursorOffset = acMainSnippet.indexOf("    \n") + 4;
+          view.dispatch({
+            changes: { from, to, insert: acMainSnippet },
+            selection: { anchor: from + cursorOffset },
+          });
+        },
+      },
+      { label: "int", type: "type", boost: 10 },
+      { label: "long long", type: "type", boost: 10 },
+      { label: "bool", type: "type", boost: 10 },
+      { label: "string", type: "type", boost: 10 },
+      { label: "vector", type: "type", boost: 10 },
+      { label: "if", type: "keyword", boost: 8 },
+      { label: "else", type: "keyword", boost: 8 },
+      { label: "for", type: "keyword", boost: 8 },
+      { label: "while", type: "keyword", boost: 8 },
+      { label: "break", type: "keyword", boost: 8 },
+      { label: "continue", type: "keyword", boost: 8 },
+      { label: "return", type: "keyword", boost: 8 },
+      { label: "main", type: "function", boost: 9 },
+      { label: "cin", type: "variable", boost: 7 },
+      { label: "cout", type: "variable", boost: 7 },
+      { label: "endl", type: "constant", boost: 6 },
+      { label: "push_back", type: "method", boost: 6 },
+      { label: "pop_back", type: "method", boost: 6 },
+      { label: "size", type: "method", boost: 6 },
+      { label: "back", type: "method", boost: 6 },
+      { label: "front", type: "method", boost: 6 },
+    ],
+  };
+};
+
+
+
 
 class BreakpointMarker extends GutterMarker {
   toDOM() {
@@ -69,29 +119,7 @@ const executionMarker = new ExecutionMarker();
 export const breakpointCompartment = new Compartment();
 export const executionCompartment = new Compartment();
 
-const cppCompletionSource = completeFromList([
-  { label: "int", type: "type", boost: 10 },
-  { label: "long long", type: "type", boost: 10 },
-  { label: "bool", type: "type", boost: 10 },
-  { label: "string", type: "type", boost: 10 },
-  { label: "vector", type: "type", boost: 10 },
-  { label: "if", type: "keyword", boost: 8 },
-  { label: "else", type: "keyword", boost: 8 },
-  { label: "for", type: "keyword", boost: 8 },
-  { label: "while", type: "keyword", boost: 8 },
-  { label: "break", type: "keyword", boost: 8 },
-  { label: "continue", type: "keyword", boost: 8 },
-  { label: "return", type: "keyword", boost: 8 },
-  { label: "main", type: "function", boost: 9 },
-  { label: "cin", type: "variable", boost: 7 },
-  { label: "cout", type: "variable", boost: 7 },
-  { label: "endl", type: "constant", boost: 6 },
-  { label: "push_back", type: "method", boost: 6 },
-  { label: "pop_back", type: "method", boost: 6 },
-  { label: "size", type: "method", boost: 6 },
-  { label: "back", type: "method", boost: 6 },
-  { label: "front", type: "method", boost: 6 },
-]);
+
 
 function createBreakpointGutter(
   breakpoints: number[],
