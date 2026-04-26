@@ -9,11 +9,6 @@ on:
         type: choice
         options: [patch, minor, major]
         default: 'patch'
-      prerelease:
-        description: 'Mark as pre-release'
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   release:
@@ -26,11 +21,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+      
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
-
+      
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -76,7 +71,10 @@ jobs:
           git add package.json pnpm-lock.yaml
           git commit -m "chore(release): v${{ steps.version.outputs.new_version }}" || true
           git tag -a "v${{ steps.version.outputs.new_version }}" -m "v${{ steps.version.outputs.new_version }}"
-          git push --follow-tags
+          git push origin HEAD --follow-tags
+
+      - name: Publish to npm
+        run: pnpm publish --provenance --access public
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -85,13 +83,3 @@ jobs:
           name: v${{ steps.version.outputs.new_version }}
           body: |
             ${{ steps.changelog.outputs.changelog }}
-
-            **Full Changelog:** ${{ github.server_url }}/${{ github.repository }}/compare/${{ steps.prev_tag.outputs.prev_tag }}...v${{ steps.version.outputs.new_version }}
-          prerelease: ${{ github.event.inputs.prerelease }}
-          generate_release_notes: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to npm
-        if: github.event.inputs.prerelease == 'false'
-        run: pnpm publish --provenance --access public
