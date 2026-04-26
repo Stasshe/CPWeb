@@ -57,9 +57,9 @@ function buildInputDisplayParts(input: string): InputDisplayPart[] {
 
 function ExpandIcon({ expanded }: { expanded: boolean }) {
   return expanded ? (
-    <ChevronDown size={10} className="shrink-0 text-[var(--text-dim)]" />
+    <ChevronDown size={12} className="shrink-0 text-[var(--text-dim)]" />
   ) : (
-    <ChevronRight size={10} className="shrink-0 text-[var(--text-dim)]" />
+    <ChevronRight size={12} className="shrink-0 text-[var(--text-dim)]" />
   );
 }
 
@@ -76,11 +76,11 @@ function SectionHeader({
 
   return (
     <div
-      className={`flex select-none items-center gap-[5px] border-b border-[var(--border)] bg-[var(--bg3)] px-2 py-1 text-[10px] font-bold tracking-[0.08em] uppercase ${textColor}`}
+      className={`flex select-none items-center gap-1.5 border-b border-[var(--border)] bg-[var(--bg3)] px-3 py-1.5 text-[12px] font-bold tracking-[0.08em] uppercase ${textColor}`}
     >
       {label}
       {typeof count === "number" ? (
-        <span className="ml-auto rounded-[2px] bg-[var(--bg4)] px-1 text-[10px] text-[var(--text-dim)]">
+        <span className="ml-auto rounded-[3px] bg-[var(--bg4)] px-1.5 text-[12px] text-[var(--text-dim)]">
           {count}
         </span>
       ) : null}
@@ -89,7 +89,7 @@ function SectionHeader({
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
-  return <div className="px-5 py-[3px] text-[11px] italic text-[var(--text-dim)]">{children}</div>;
+  return <div className="px-6 py-1 text-[14px] italic text-[var(--text-dim)]">{children}</div>;
 }
 
 function VariableValueTree({
@@ -104,7 +104,7 @@ function VariableValueTree({
   const arrayView = getArrayView(value, arraysByRef);
   const isExpanded = expandedKeys.has(valueKey);
   const hasChildren = arrayView !== null;
-  const rowPadding = `${8 + indent * 12}px`;
+  const rowPadding = `${10 + indent * 15}px`;
 
   const handleToggle = () => {
     if (hasChildren) {
@@ -115,7 +115,7 @@ function VariableValueTree({
   return (
     <div>
       <div
-        className={`debug-vars-font flex items-center gap-1 py-px text-[10px] hover:bg-[var(--hl-line)] ${hasChildren ? "cursor-pointer" : ""}`}
+        className={`debug-vars-font flex items-center gap-1.5 py-0.5 text-[12px] hover:bg-[var(--hl-line)] ${hasChildren ? "cursor-pointer" : ""}`}
         style={{ paddingLeft: rowPadding }}
         role={hasChildren ? "button" : undefined}
         tabIndex={hasChildren ? 0 : undefined}
@@ -130,7 +130,7 @@ function VariableValueTree({
             : undefined
         }
       >
-        {hasChildren ? <ExpandIcon expanded={isExpanded} /> : <span className="w-[9px] shrink-0" />}
+        {hasChildren ? <ExpandIcon expanded={isExpanded} /> : <span className="w-[12px] shrink-0" />}
         <span className="shrink-0 text-[var(--text-dim)]">[{index}]</span>
         {arrayView ? (
           <span className="text-[var(--purple)]">{formatArrayLabel(arrayView)}</span>
@@ -139,7 +139,7 @@ function VariableValueTree({
         )}
       </div>
       {arrayView && isExpanded ? (
-        <div className="max-h-[240px] overflow-y-auto [scrollbar-color:var(--border2)_transparent] [scrollbar-width:thin]">
+        <div className="max-h-[300px] overflow-y-auto [scrollbar-color:var(--border2)_transparent] [scrollbar-width:thin]">
           {arrayView.values.map((childValue, childIndex) => (
             <VariableValueTree
               key={childIndex}
@@ -178,7 +178,7 @@ function VariableRow({
   const isExpanded = expandedKeys.has(rowKey);
   const isExpandable = arrayView !== null;
   const previewClassName =
-    arrayView === null ? "text-[var(--orange)]" : "text-[10px] text-[var(--purple)]";
+    arrayView === null ? "text-[var(--orange)]" : "text-[12px] text-[var(--purple)]";
 
   const handleToggle = () => {
     if (isExpandable) {
@@ -189,7 +189,7 @@ function VariableRow({
   return (
     <div>
       <div
-        className={`debug-vars-font grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 px-2 py-px pl-5 text-[11px] hover:bg-[var(--hl-line)] ${isExpandable ? "cursor-pointer" : ""}`}
+        className={`debug-vars-font grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 px-3 py-0.5 pl-6 text-[14px] hover:bg-[var(--hl-line)] ${isExpandable ? "cursor-pointer" : ""}`}
         role={isExpandable ? "button" : undefined}
         tabIndex={isExpandable ? 0 : undefined}
         onClick={isExpandable ? handleToggle : undefined}
@@ -207,15 +207,15 @@ function VariableRow({
           {isExpandable ? <ExpandIcon expanded={isExpanded} /> : null}
           {variable.name}
         </span>
-        <span className="text-[10px] text-[var(--text-dim)]">
+        <span className="text-[12px] text-[var(--text-dim)]">
           {formatVariableKind(variable.kind, arrayView)}
         </span>
-        <span className={`max-w-[220px] truncate text-right ${previewClassName}`}>
+        <span className={`max-w-[275px] truncate text-right ${previewClassName}`}>
           {formatVariablePreview(variable.value, arraysByRef)}
         </span>
       </div>
       {arrayView && isExpanded ? (
-        <div className="ml-4 max-h-[300px] overflow-y-auto border-l border-[var(--border)] pb-1 [scrollbar-color:var(--border2)_transparent] [scrollbar-width:thin]">
+        <div className="ml-5 max-h-[375px] overflow-y-auto border-l border-[var(--border)] pb-1.5 [scrollbar-color:var(--border2)_transparent] [scrollbar-width:thin]">
           {arrayView.values.map((value, index) => (
             <VariableValueTree
               key={index}
@@ -291,7 +291,7 @@ export function DebugSidebar({
 
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden border-b border-[var(--border)] bg-[var(--bg2)] lg:border-r lg:border-b-0">
-      <div className="flex shrink-0 items-center gap-1 border-b border-[var(--border)] bg-[var(--bg3)] px-2 py-1.5">
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--border)] bg-[var(--bg3)] px-3 py-2">
         <button
           className="toolbar-button"
           data-variant="primary"
@@ -299,7 +299,7 @@ export function DebugSidebar({
           onClick={onLaunch}
           disabled={isPending}
         >
-          <BugPlay size={14} strokeWidth={2} />
+          <BugPlay size={18} strokeWidth={2} />
         </button>
         <button
           className="toolbar-button"
@@ -308,7 +308,7 @@ export function DebugSidebar({
           onClick={onContinue}
           disabled={isPending}
         >
-          <CirclePlay size={14} strokeWidth={2} />
+          <CirclePlay size={18} strokeWidth={2} />
         </button>
         <button
           className="toolbar-button"
@@ -317,16 +317,16 @@ export function DebugSidebar({
           onClick={onRestart}
           disabled={isPending}
         >
-          <RotateCcw size={14} strokeWidth={2} />
+          <RotateCcw size={18} strokeWidth={2} />
         </button>
-        <div className="mx-0.5 h-[14px] w-px bg-[var(--border2)]" />
+        <div className="mx-1 h-[18px] w-px bg-[var(--border2)]" />
         <button
           className="toolbar-button"
           title="Step Into"
           onClick={onStepInto}
           disabled={!canStep || isPending}
         >
-          <ArrowDownToLine size={14} strokeWidth={2} />
+          <ArrowDownToLine size={18} strokeWidth={2} />
         </button>
         <button
           className="toolbar-button"
@@ -334,7 +334,7 @@ export function DebugSidebar({
           onClick={onStepOver}
           disabled={!canStep || isPending}
         >
-          <StepForward size={14} strokeWidth={2} />
+          <StepForward size={18} strokeWidth={2} />
         </button>
         <button
           className="toolbar-button"
@@ -342,21 +342,21 @@ export function DebugSidebar({
           onClick={onStepOut}
           disabled={!canStep || isPending}
         >
-          <StepBack size={14} strokeWidth={2} />
+          <StepBack size={18} strokeWidth={2} />
         </button>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--border)] bg-[var(--bg2)] px-2 py-[3px] text-[11px] text-[var(--text-dim)]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--bg2)] px-3 py-1 text-[14px] text-[var(--text-dim)]">
         <div className="status-dot" data-status={execution.status} />
         <span className="status-label" data-status={execution.status}>
           {execution.status}
         </span>
-        <span className="ml-auto text-[10px] text-[var(--text-dim)]">{metricsText}</span>
+        <span className="ml-auto text-[12px] text-[var(--text-dim)]">{metricsText}</span>
       </div>
 
       {isDirty ? (
-        <div className="flex shrink-0 items-center gap-1.5 border-b border-[var(--border)] bg-[rgba(206,145,120,0.08)] px-2 py-[3px] text-[10px] text-[var(--orange)]">
-          <AlertCircle size={12} strokeWidth={2} />
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[rgba(206,145,120,0.08)] px-3 py-1 text-[12px] text-[var(--orange)]">
+          <AlertCircle size={14} strokeWidth={2} />
           <span>Source changed - next action will restart</span>
         </div>
       ) : null}
@@ -370,7 +370,7 @@ export function DebugSidebar({
           {execution.input.tokens.length === 0 ? (
             <EmptyState>No stdin tokens</EmptyState>
           ) : (
-            <pre className="m-0 px-2 pb-2 pt-1.5 whitespace-pre-wrap break-all font-[var(--font-mono)] text-[11px] leading-[1.5] text-[var(--text)]">
+            <pre className="m-0 px-3 pb-3 pt-2 whitespace-pre-wrap break-all font-[var(--font-mono)] text-[14px] leading-[1.5] text-[var(--text)]">
               {inputDisplayParts
                 .filter((part) => part.tokenIndex >= execution.input.nextIndex)
                 .map((part, index) => (
@@ -389,10 +389,10 @@ export function DebugSidebar({
               {[...execution.callStack].reverse().map((frame, index) => (
                 <li
                   key={`${frame.functionName}-${frame.line}-${index}`}
-                  className={`flex cursor-default items-center gap-1.5 px-2 py-0.5 pl-4 text-[11px] hover:bg-[var(--hl-line)] ${index === 0 ? "text-[var(--yellow)]" : ""}`}
+                  className={`flex cursor-default items-center gap-2 px-3 py-1 pl-5 text-[14px] hover:bg-[var(--hl-line)] ${index === 0 ? "text-[var(--yellow)]" : ""}`}
                 >
                   <span className="flex-1 truncate">{frame.functionName}()</span>
-                  <span className="shrink-0 text-[10px] text-[var(--text-dim)]">:{frame.line}</span>
+                  <span className="shrink-0 text-[12px] text-[var(--text-dim)]">:{frame.line}</span>
                 </li>
               ))}
             </ul>
@@ -406,7 +406,7 @@ export function DebugSidebar({
           ) : (
             execution.localVars.map((scope, index) => (
               <div key={`${scope.name}-${index}`} className="py-0.5">
-                <div className="px-2 py-px pl-3 text-[10px] italic text-[var(--text-dim)]">
+                <div className="px-3 py-0.5 pl-4 text-[12px] italic text-[var(--text-dim)]">
                   {getScopeTitle(scope, index)}
                 </div>
                 {scope.vars.map((variable) => (
@@ -445,7 +445,7 @@ export function DebugSidebar({
         {execution.error ? (
           <div className="border-b border-[var(--border)]">
             <SectionHeader label="Error" tone="error" />
-            <div className="break-all whitespace-pre-wrap px-2 py-1 font-[var(--font-mono)] text-[11px] text-[var(--red)]">
+            <div className="break-all whitespace-pre-wrap px-3 py-2 font-[var(--font-mono)] text-[14px] text-[var(--red)]">
               {execution.error.message}
             </div>
           </div>

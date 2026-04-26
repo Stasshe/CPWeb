@@ -33,7 +33,7 @@ export default function Home() {
   }
 
   return (
-    <div className="grid h-screen grid-cols-1 grid-rows-[minmax(280px,38vh)_1fr] overflow-hidden lg:grid-cols-[minmax(320px,4fr)_minmax(0,6fr)] lg:grid-rows-[100vh]">
+    <div className="grid h-screen grid-cols-1 grid-rows-[minmax(350px,42vh)_1fr] overflow-hidden lg:grid-cols-[minmax(400px,4fr)_minmax(0,6fr)] lg:grid-rows-[100vh]">
       <DebugSidebar
         execution={execution}
         input={input}
@@ -50,7 +50,7 @@ export default function Home() {
         onStepOut={handleStepOut}
       />
 
-      <div className="grid min-h-0 grid-rows-[1fr_180px] overflow-hidden bg-[var(--bg)]">
+      <div className="grid min-h-0 grid-rows-[1fr_225px] overflow-hidden bg-[var(--bg)]">
         <EditorPane editorHostRef={editorHostRef} />
         <IOPanels
           input={input}

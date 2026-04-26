@@ -365,15 +365,15 @@ export const editorTheme = EditorView.theme({
   "&": {
     height: "100%",
     fontFamily: "var(--font-mono)",
-    fontSize: "13px",
+    fontSize: "16px",
   },
   ".cm-scroller": {
     fontFamily: "var(--font-mono)",
-    lineHeight: "1.4",
+    lineHeight: "1.5",
     overflow: "auto",
   },
   ".cm-content": {
-    padding: "0 0 24px",
+    padding: "0 0 30px",
   },
   ".cm-selectionBackground": {
     backgroundColor: "rgba(86, 156, 214, 0.28) !important",
@@ -392,7 +392,7 @@ export const editorTheme = EditorView.theme({
     backgroundColor: "rgba(220, 220, 170, 0.08)",
   },
   ".cm-line": {
-    padding: "0 12px",
+    padding: "0 15px",
   },
   ".cm-activeLineGutter": {
     backgroundColor: "transparent",
@@ -401,14 +401,14 @@ export const editorTheme = EditorView.theme({
     borderRight: "1px solid var(--border)",
   },
   ".cm-lineNumbers .cm-gutterElement": {
-    padding: "0 8px 0 0",
-    minWidth: "28px",
+    padding: "0 10px 0 0",
+    minWidth: "35px",
   },
   ".cm-breakpoint-gutter": {
-    width: "28px",
+    width: "35px",
   },
   ".cm-execution-gutter": {
-    width: "14px",
+    width: "18px",
   },
   ".cm-breakpoint-gutter .cm-gutterElement, .cm-execution-gutter .cm-gutterElement": {
     display: "flex",
@@ -423,15 +423,15 @@ export const editorTheme = EditorView.theme({
     backgroundColor: "rgba(255, 255, 255, 0.06)",
   },
   ".cm-breakpoint-marker": {
-    width: "8px",
-    height: "8px",
+    width: "10px",
+    height: "10px",
     borderRadius: "50%",
     backgroundColor: "var(--bp)",
     boxShadow: "0 0 0 1px rgba(0, 0, 0, 0.35)",
   },
   ".cm-execution-marker": {
     color: "#ffdf5d",
-    fontSize: "10px",
+    fontSize: "12px",
     lineHeight: "1",
     textShadow: "0 0 10px rgba(255, 223, 93, 0.45)",
   },
@@ -458,8 +458,8 @@ export const editorTheme = EditorView.theme({
     borderBottom: "1px solid var(--border)",
   },
   ".cm-panel.cm-search": {
-    padding: "6px 8px",
-    gap: "6px",
+    padding: "8px 10px",
+    gap: "8px",
     fontFamily: "var(--font-ui)",
   },
   ".cm-panel.cm-search input, .cm-panel.cm-search button, .cm-gotoLineDialog input, .cm-gotoLineDialog button": {
@@ -469,15 +469,15 @@ export const editorTheme = EditorView.theme({
     backgroundColor: "var(--bg2)",
     color: "var(--text)",
     border: "1px solid var(--border)",
-    borderRadius: "4px",
-    padding: "3px 6px",
+    borderRadius: "5px",
+    padding: "4px 8px",
   },
   ".cm-button": {
     backgroundColor: "var(--bg4)",
     color: "var(--text)",
     border: "1px solid var(--border)",
-    borderRadius: "4px",
-    padding: "3px 8px",
+    borderRadius: "5px",
+    padding: "4px 10px",
   },
   ".cm-button:hover": {
     backgroundColor: "rgba(255, 255, 255, 0.08)",
