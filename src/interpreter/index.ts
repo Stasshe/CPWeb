@@ -14,12 +14,7 @@ import type {
 } from "@/types";
 import type { RuntimeArgument } from "./evaluator";
 import { InterpreterEvaluator } from "./evaluator";
-import {
-  buildDebugInfoView,
-  type InterpreterOptions,
-  PauseTrap,
-  toRuntimeError,
-} from "./runtime";
+import { buildDebugInfoView, type InterpreterOptions, PauseTrap, toRuntimeError } from "./runtime";
 
 export type { InterpreterOptions, InterpreterStepInfo } from "./runtime";
 
