@@ -9,7 +9,7 @@ import {
   StepBack,
   StepForward,
 } from "lucide-react";
-import type { DebugState } from "@clientsidecpp/types";
+import type { DebugState } from "@/types";
 import { getArrayRef, getScopeTitle } from "./playground-state";
 
 export function DebugSidebar({

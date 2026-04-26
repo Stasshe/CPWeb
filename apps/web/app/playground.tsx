@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { EditorView } from "@codemirror/view";
-import { DebugSession } from "@clientsidecpp/index";
-import type { DebugState } from "@clientsidecpp/types";
+import { DebugSession } from "@/index";
+import type { DebugState } from "@/types";
 import {
   createPlaygroundEditorState,
   reconfigureBreakpoints,

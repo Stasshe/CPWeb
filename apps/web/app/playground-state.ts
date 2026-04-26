@@ -1,4 +1,4 @@
-import type { DebugState, ScopeView } from "@clientsidecpp/types";
+import type { DebugState, ScopeView } from "@/types";
 
 export const starterSource = `using namespace std;
 

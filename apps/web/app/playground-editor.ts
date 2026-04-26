@@ -36,7 +36,7 @@ import {
   lineNumbers,
   rectangularSelection,
 } from "@codemirror/view";
-import type { DebugExecutionRange } from "@clientsidecpp/types";
+import type { DebugExecutionRange } from "@/types";
 import { dracula } from "thememirror";
 
 const acMainSnippet = `#include <bits/stdc++.h>
