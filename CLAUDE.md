@@ -5,11 +5,31 @@
 ```
 src/
 ├── index.ts
+├── compiler.ts
+├── preprocessor.ts
 ├── types.ts
 ├── parser/
+│   ├── index.ts
+│   ├── lexer.ts
+│   ├── expression.ts
+│   ├── base-parser.ts
+│   ├── base-parser-core.ts
+│   ├── base-parser-type-support.ts
+│   └── base-parser-support.ts
 ├── runtime/
+│   ├── errors.ts
+│   └── value.ts
 ├── interpreter/
+│   ├── index.ts
+│   ├── evaluator.ts
+│   ├── interpreter-runtime.ts
+│   ├── interpreter-runtime-core.ts
+│   ├── interpreter-runtime-type-support.ts
+│   └── interpreter-runtime-support.ts
+├── semantic/
+│   └── validator.ts
 └── debugger/
+    └── session.ts
 ```
 
 ## ファイル分割
@@ -18,6 +38,8 @@ src/
 - 超えそうになったら分割を先に検討する。分割単位は責務で決める、行数で決めない
 - たとえ100行未満でも、責務がそこで完結するならそれでよい。増やすな
 - 逆に、責務が複数にまたがるなら分割する。
+- parser / interpreter のような中核モジュールは、入口の高レベル制御と低レベル支援を別ファイルに分ける
+- さらに支援層が大きくなったら、型処理と storage/location 処理のようにデータ責務で分割する
 
 ## 型
 

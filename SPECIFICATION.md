@@ -266,7 +266,7 @@ int x = cond ? a : b;
 - `cond ? expr1 : expr2` をサポートする
 - 条件式は `if` / `while` と同様に `bool` または数値型を取れる
 - `cond` は短絡評価され、選ばれた側の式だけを実行する
-- 結果型は両分岐の共通型になる。少なくとも同一型、数値同士、`pointer` と `0`、`pair` 同士をサポートする
+- 結果型は両分岐の共通型になる。少なくとも同一型、数値同士、`pointer` と `0`、`pair` 同士、`tuple` 同士をサポートする
 
 ### 5.7 演算子の優先順位
 
@@ -683,10 +683,10 @@ cin_stmt      = "cin" { ">>" lvalue } ";" ;
 cout_stmt     = "cout" { "<<" expr } ";" ;
 cerr_stmt     = "cerr" { "<<" expr } ";" ;
 
-(* 式（優先順位は §5.6 に従う） *)
+(* 式（優先順位は §5.7 に従う） *)
 expr          = assign_expr ;
-assign_expr   = lvalue assign_op expr
-              | logical_or ;
+assign_expr   = conditional [ assign_op assign_expr ] ;
+conditional   = logical_or [ "?" assign_expr ":" conditional ] ;
 assign_op     = "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 logical_or    = logical_and { "||" logical_and } ;
 logical_and   = bitwise_or { "&&" bitwise_or } ;
@@ -705,12 +705,13 @@ postfix_op    = "++" | "--"
               | "[" expr "]"
               | "(" arg_list ")"
               | "." method_call ;
-primary       = int_lit | bool_lit | string_lit | ident | "(" expr ")" ;
+primary       = int_lit | bool_lit | string_lit | ident | tuple_get | "(" expr ")" ;
 
-lvalue        = ident | ident "[" expr "]" | "*" unary ;
+lvalue        = ident | ident "[" expr "]" | "*" unary | tuple_get ;
 arg_list      = [ expr { "," expr } ] ;
 expr_list     = expr { "," expr } ;
 method_call   = ident "(" arg_list ")" | ident ;
+tuple_get     = "get" "<" int_lit ">" "(" expr ")" ;
 
 (* リテラル *)
 int_lit       = ["-"] digit { digit } ;
@@ -733,11 +734,12 @@ type ASTNode =
   | ArrayDecl
   | VectorDecl
   | AssignExpr
+  | ConditionalExpr
   | BinaryExpr
   | UnaryExpr
-  | PostfixExpr          // i++, i--
   | IndexExpr            // a[i]
   | CallExpr
+  | TupleGetExpr         // get<0>(t)
   | MethodCallExpr       // v.push_back(x) 等
   | IfStmt
   | ForStmt
@@ -778,7 +780,6 @@ type NodeBase = { line: number; col: number }
 
 ### 将来対応
 
-- 三項演算子（`? :`）
 - 条件付きコンパイル（`#if`, `#ifdef`, `#ifndef`, `#else`, `#endif`）
 - その他のプリプロセッサディレクティブ
 - 条件付きブレークポイント
