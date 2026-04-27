@@ -1,8 +1,7 @@
 import {
-  isBuiltinRangeAlgorithmName,
-  isBuiltinTemplateComparatorName,
-  isBuiltinTemplateFactoryName,
-  isBuiltinValueFunctionName,
+  describeBuiltinArity,
+  getBuiltinFreeFunctionSpec,
+  getBuiltinTemplateComparatorSpec,
 } from "@/stdlib/registry";
 import type { RuntimeLocation, RuntimeValue } from "@/runtime/value";
 import type {
@@ -328,93 +327,127 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     args: ExprNode[],
     line: number,
   ): RuntimeValue | null {
-    if (isBuiltinValueFunctionName(callee) && callee === "abs") {
-      if (args.length !== 1) {
-        this.fail("abs requires exactly 1 argument", line);
-      }
-      const value = this.expectInt(this.evaluateExpr(args[0] as ExprNode), line).value;
-      return { kind: "int", value: value < 0n ? -value : value };
+    const builtin = getBuiltinFreeFunctionSpec(callee);
+    if (builtin === null) {
+      return null;
     }
 
-    if (isBuiltinValueFunctionName(callee) && (callee === "max" || callee === "min")) {
-      if (args.length !== 2) {
-        this.fail(`${callee} requires exactly 2 arguments`, line);
-      }
-      const left = this.expectInt(this.evaluateExpr(args[0] as ExprNode), line).value;
-      const right = this.expectInt(this.evaluateExpr(args[1] as ExprNode), line).value;
-      return {
-        kind: "int",
-        value: callee === "max" ? (left > right ? left : right) : left < right ? left : right,
-      };
-    }
-
-    if (isBuiltinValueFunctionName(callee) && callee === "swap") {
-      if (args.length !== 2) {
-        this.fail("swap requires exactly 2 arguments", line);
-      }
-      const left = args[0];
-      const right = args[1];
-      if (
-        left === undefined ||
-        right === undefined ||
-        !this.isAssignableTarget(left) ||
-        !this.isAssignableTarget(right)
-      ) {
-        this.fail("swap arguments must be lvalues", line);
-      }
-      const leftValue = this.readAssignTarget(left, line);
-      const rightValue = this.readAssignTarget(right, line);
-      this.writeAssignTarget(left, rightValue, line);
-      this.writeAssignTarget(right, leftValue, line);
-      return { kind: "void" };
-    }
-
-    if (isBuiltinTemplateFactoryName(callee) && callee === "make_pair") {
-      if (args.length !== 2) {
-        this.fail("make_pair requires exactly 2 arguments", line);
-      }
-      const firstExpr = args[0];
-      const secondExpr = args[1];
-      if (firstExpr === undefined || secondExpr === undefined) {
-        this.fail("make_pair requires exactly 2 arguments", line);
-      }
-      const firstValue = this.ensureNotVoid(
-        this.ensureInitialized(this.evaluateExpr(firstExpr), line, "value"),
-        line,
-      );
-      const secondValue = this.ensureNotVoid(
-        this.ensureInitialized(this.evaluateExpr(secondExpr), line, "value"),
-        line,
-      );
-      return {
-        kind: "pair",
-        type: {
-          ...pairType(this.runtimeValueToType(firstValue, line), this.runtimeValueToType(secondValue, line)),
-        },
-        first: firstValue,
-        second: secondValue,
-      };
-    }
-
-    if (isBuiltinTemplateFactoryName(callee) && callee === "make_tuple") {
-      if (args.length === 0) {
-        this.fail("make_tuple requires at least 1 argument", line);
-      }
-      const values = args.map((arg) =>
-        this.ensureNotVoid(this.ensureInitialized(this.evaluateExpr(arg), line, "value"), line),
-      );
-      return {
-        kind: "tuple",
-        type: {
-          ...tupleType(values.map((value) => this.runtimeValueToType(value, line))),
-        },
-        values,
-      };
-    }
-
-    if (isBuiltinRangeAlgorithmName(callee)) {
-      this.applyRangeBuiltin(callee, args, line);
-      return { kind: "void" };
+    switch (builtin.kind) {
+      case "value_function":
+        switch (builtin.name) {
+          case "abs": {
+            if (args.length !== builtin.maxArgs) {
+              this.fail(
+                `${builtin.name} requires ${describeBuiltinArity(builtin)} argument`,
+                line,
+              );
+            }
+            const value = this.expectInt(this.evaluateExpr(args[0] as ExprNode), line).value;
+            return { kind: "int", value: value < 0n ? -value : value };
+          }
+          case "max":
+          case "min": {
+            if (args.length !== builtin.maxArgs) {
+              this.fail(
+                `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+                line,
+              );
+            }
+            const left = this.expectInt(this.evaluateExpr(args[0] as ExprNode), line).value;
+            const right = this.expectInt(this.evaluateExpr(args[1] as ExprNode), line).value;
+            return {
+              kind: "int",
+              value:
+                builtin.name === "max" ? (left > right ? left : right) : left < right ? left : right,
+            };
+          }
+          case "swap": {
+            if (args.length !== builtin.maxArgs) {
+              this.fail(
+                `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+                line,
+              );
+            }
+            const left = args[0];
+            const right = args[1];
+            if (
+              left === undefined ||
+              right === undefined ||
+              !this.isAssignableTarget(left) ||
+              !this.isAssignableTarget(right)
+            ) {
+              this.fail("swap arguments must be lvalues", line);
+            }
+            const leftValue = this.readAssignTarget(left, line);
+            const rightValue = this.readAssignTarget(right, line);
+            this.writeAssignTarget(left, rightValue, line);
+            this.writeAssignTarget(right, leftValue, line);
+            return { kind: "void" };
+          }
+        }
+        break;
+      case "template_factory":
+        switch (builtin.name) {
+          case "make_pair": {
+            if (args.length !== builtin.maxArgs) {
+              this.fail(
+                `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+                line,
+              );
+            }
+            const firstExpr = args[0];
+            const secondExpr = args[1];
+            if (firstExpr === undefined || secondExpr === undefined) {
+              this.fail(
+                `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+                line,
+              );
+            }
+            const firstValue = this.ensureNotVoid(
+              this.ensureInitialized(this.evaluateExpr(firstExpr), line, "value"),
+              line,
+            );
+            const secondValue = this.ensureNotVoid(
+              this.ensureInitialized(this.evaluateExpr(secondExpr), line, "value"),
+              line,
+            );
+            return {
+              kind: "pair",
+              type: {
+                ...pairType(
+                  this.runtimeValueToType(firstValue, line),
+                  this.runtimeValueToType(secondValue, line),
+                ),
+              },
+              first: firstValue,
+              second: secondValue,
+            };
+          }
+          case "make_tuple": {
+            if (args.length < builtin.minArgs) {
+              this.fail(
+                `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+                line,
+              );
+            }
+            const values = args.map((arg) =>
+              this.ensureNotVoid(this.ensureInitialized(this.evaluateExpr(arg), line, "value"), line),
+            );
+            return {
+              kind: "tuple",
+              type: {
+                ...tupleType(values.map((value) => this.runtimeValueToType(value, line))),
+              },
+              values,
+            };
+          }
+        }
+        break;
+      case "range_algorithm":
+        this.applyRangeBuiltin(builtin.name, args, line);
+        return { kind: "void" };
+      case "template_comparator":
+        return null;
     }
 
     return null;
@@ -922,8 +955,8 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     }
     if (
       expr.kind === "CallExpr" &&
-      isBuiltinTemplateComparatorName(expr.callee) &&
-      expr.args.length === 0
+      expr.args.length === 0 &&
+      getBuiltinTemplateComparatorSpec(expr.callee) !== null
     ) {
       return true;
     }

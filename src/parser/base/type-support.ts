@@ -1,4 +1,4 @@
-import { isSupportedTemplateTypeName } from "@/stdlib/registry";
+import { getSupportedTemplateTypeSpec } from "@/stdlib/registry";
 import type {
   ArrayDeclNode,
   PrimitiveTypeNode,
@@ -191,13 +191,16 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
   protected peekSupportedTemplateTypeName(): "vector" | "map" | "pair" | "tuple" | null {
     const token = this.peek();
     const next = this.tokens[this.index + 1];
+    const spec =
+      token.kind === "identifier" || token.kind === "keyword"
+        ? getSupportedTemplateTypeSpec(token.text)
+        : null;
     if (
-      (token.kind === "identifier" || token.kind === "keyword") &&
-      isSupportedTemplateTypeName(token.text) &&
+      spec !== null &&
       next?.kind === "symbol" &&
       next.text === "<"
     ) {
-      return token.text;
+      return spec.name;
     }
     return null;
   }

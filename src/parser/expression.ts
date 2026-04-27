@@ -1,4 +1,4 @@
-import { isBuiltinTemplateComparatorName } from "@/stdlib/registry";
+import { getBuiltinTemplateComparatorSpec } from "@/stdlib/registry";
 import type {
   AddressOfExprNode,
   AssignExprNode,
@@ -480,9 +480,10 @@ export abstract class ExpressionParser extends BaseParser {
   private parseGreaterComparator(): ExprNode | null {
     const token = this.peek();
     const next = this.tokens[this.index + 1];
+    const comparator = token?.kind === "identifier" ? getBuiltinTemplateComparatorSpec(token.text) : null;
     if (
       token?.kind !== "identifier" ||
-      !isBuiltinTemplateComparatorName(token.text) ||
+      comparator === null ||
       next?.kind !== "symbol" ||
       next.text !== "<"
     ) {
@@ -490,7 +491,7 @@ export abstract class ExpressionParser extends BaseParser {
     }
 
     this.advance();
-    if (!this.consumeSymbol("<", "expected '<' after greater")) {
+    if (!this.consumeSymbol("<", `expected '<' after ${comparator.name}`)) {
       return null;
     }
     const type = this.parsePrimitiveType();
@@ -509,7 +510,7 @@ export abstract class ExpressionParser extends BaseParser {
 
     return {
       kind: "CallExpr",
-      callee: "greater",
+      callee: comparator.name,
       args: [],
       ...this.rangeToPrevious(token),
     };

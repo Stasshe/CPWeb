@@ -1,4 +1,4 @@
-import { isUnsupportedTemplateTypeName } from "@/stdlib/registry";
+import { getUnsupportedTemplateTypeSpec } from "@/stdlib/registry";
 import type {
   ArrayDeclNode,
   AssignTargetNode,
@@ -265,7 +265,7 @@ export abstract class BaseParserSupport extends BaseParserTypeSupport {
 
   protected isUnsupportedTemplateTypeDeclarationStart(): boolean {
     const token = this.peek();
-    if (token.kind !== "identifier" || !isUnsupportedTemplateTypeName(token.text)) {
+    if (token.kind !== "identifier" || getUnsupportedTemplateTypeSpec(token.text) === null) {
       return false;
     }
     const next = this.tokens[this.index + 1];

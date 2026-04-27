@@ -1,14 +1,12 @@
 import {
-  isBuiltinRangeAlgorithmName,
-  isBuiltinTemplateComparatorName,
-  isBuiltinTemplateFactoryName,
-  isBuiltinValueFunctionName,
+  describeBuiltinArity,
+  getBuiltinFreeFunctionSpec,
+  getBuiltinTemplateComparatorSpec,
 } from "@/stdlib/registry";
 import type {
   CompileError,
   ExprNode,
   FunctionDeclNode,
-  PrimitiveTypeNode,
   ProgramNode,
   RangeForStmtNode,
   StatementNode,
@@ -737,117 +735,150 @@ function validateBuiltinCall(
   col: number,
   context: ValidationContext,
 ): TypeNode | null | undefined {
-  if (isBuiltinValueFunctionName(callee) && callee === "abs") {
-    if (args.length !== 1) {
-      pushError(context, line, col, "abs requires exactly 1 argument");
-    }
-    validateExpr(args[0] ?? null, context, "int");
-    return { kind: "PrimitiveType", name: "int" };
+  const builtin = getBuiltinFreeFunctionSpec(callee);
+  if (builtin === null) {
+    return undefined;
   }
 
-  if (isBuiltinValueFunctionName(callee) && (callee === "max" || callee === "min")) {
-    if (args.length !== 2) {
-      pushError(context, line, col, `${callee} requires exactly 2 arguments`);
-    }
-    validateExpr(args[0] ?? null, context, "int");
-    validateExpr(args[1] ?? null, context, "int");
-    return { kind: "PrimitiveType", name: "int" };
-  }
-
-  if (isBuiltinValueFunctionName(callee) && callee === "swap") {
-    if (args.length !== 2) {
-      pushError(context, line, col, "swap requires exactly 2 arguments");
-    }
-    const left = args[0];
-    const right = args[1];
-    if (left !== undefined) {
-      const leftType = validateExpr(left, context);
-      if (!isAssignableExpr(left)) {
-        pushError(context, left.line, left.col, "swap arguments must be lvalues");
-      }
-      if (right !== undefined) {
-        const rightType = validateExpr(right, context, leftType ?? undefined);
-        if (!isAssignableExpr(right)) {
-          pushError(context, right.line, right.col, "swap arguments must be lvalues");
+  switch (builtin.kind) {
+    case "value_function":
+      switch (builtin.name) {
+        case "abs":
+          if (args.length !== builtin.maxArgs) {
+            pushError(
+              context,
+              line,
+              col,
+              `${builtin.name} requires ${describeBuiltinArity(builtin)} argument`,
+            );
+          }
+          validateExpr(args[0] ?? null, context, "int");
+          return { kind: "PrimitiveType", name: "int" };
+        case "max":
+        case "min":
+          if (args.length !== builtin.maxArgs) {
+            pushError(
+              context,
+              line,
+              col,
+              `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+            );
+          }
+          validateExpr(args[0] ?? null, context, "int");
+          validateExpr(args[1] ?? null, context, "int");
+          return { kind: "PrimitiveType", name: "int" };
+        case "swap": {
+          if (args.length !== builtin.maxArgs) {
+            pushError(
+              context,
+              line,
+              col,
+              `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+            );
+          }
+          const left = args[0];
+          const right = args[1];
+          if (left !== undefined) {
+            const leftType = validateExpr(left, context);
+            if (!isAssignableExpr(left)) {
+              pushError(context, left.line, left.col, "swap arguments must be lvalues");
+            }
+            if (right !== undefined) {
+              const rightType = validateExpr(right, context, leftType ?? undefined);
+              if (!isAssignableExpr(right)) {
+                pushError(context, right.line, right.col, "swap arguments must be lvalues");
+              }
+              if (leftType !== null && rightType !== null && !isAssignable(rightType, leftType)) {
+                pushError(
+                  context,
+                  line,
+                  col,
+                  `cannot convert '${typeToString(rightType)}' to '${typeToString(leftType)}'`,
+                );
+              }
+            }
+          } else if (right !== undefined) {
+            validateExpr(right, context);
+          }
+          return { kind: "PrimitiveType", name: "void" };
         }
-        if (leftType !== null && rightType !== null && !isAssignable(rightType, leftType)) {
-          pushError(
-            context,
-            line,
-            col,
-            `cannot convert '${typeToString(rightType)}' to '${typeToString(leftType)}'`,
-          );
+      }
+      break;
+    case "template_factory":
+      switch (builtin.name) {
+        case "make_pair": {
+          if (args.length !== builtin.maxArgs) {
+            pushError(
+              context,
+              line,
+              col,
+              `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+            );
+          }
+          const firstType = validateExpr(args[0] ?? null, context);
+          const secondType = validateExpr(args[1] ?? null, context);
+          if (firstType === null || secondType === null) {
+            return null;
+          }
+          return pairType(firstType, secondType);
+        }
+        case "make_tuple": {
+          if (args.length < builtin.minArgs) {
+            pushError(
+              context,
+              line,
+              col,
+              `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+            );
+            return null;
+          }
+          const elementTypes: TypeNode[] = [];
+          for (const arg of args) {
+            const elementType = validateExpr(arg, context);
+            if (elementType === null) {
+              return null;
+            }
+            elementTypes.push(elementType);
+          }
+          return tupleType(elementTypes);
         }
       }
-    } else if (right !== undefined) {
-      validateExpr(right, context);
-    }
-    return { kind: "PrimitiveType", name: "void" };
-  }
-
-  if (isBuiltinTemplateFactoryName(callee) && callee === "make_pair") {
-    if (args.length !== 2) {
-      pushError(context, line, col, "make_pair requires exactly 2 arguments");
-    }
-    const firstType = validateExpr(args[0] ?? null, context);
-    const secondType = validateExpr(args[1] ?? null, context);
-    if (firstType === null || secondType === null) {
+      break;
+    case "range_algorithm":
+      return validateRangeBuiltin(builtin, args, line, col, context);
+    case "template_comparator":
+      pushError(context, line, col, `'${builtin.name}' was not declared in this scope`);
       return null;
-    }
-    return pairType(firstType, secondType);
-  }
-
-  if (isBuiltinTemplateFactoryName(callee) && callee === "make_tuple") {
-    if (args.length === 0) {
-      pushError(context, line, col, "make_tuple requires at least 1 argument");
-      return null;
-    }
-    const elementTypes: TypeNode[] = [];
-    for (const arg of args) {
-      const elementType = validateExpr(arg, context);
-      if (elementType === null) {
-        return null;
-      }
-      elementTypes.push(elementType);
-    }
-    return tupleType(elementTypes);
-  }
-
-  if (isBuiltinRangeAlgorithmName(callee)) {
-    return validateRangeBuiltin(callee, args, line, col, context);
-  }
-
-  if (isBuiltinTemplateComparatorName(callee)) {
-    pushError(context, line, col, "'greater' was not declared in this scope");
-    return null;
   }
 
   return undefined;
 }
 
 function validateRangeBuiltin(
-  callee: "sort" | "reverse" | "fill",
+  builtin: Extract<ReturnType<typeof getBuiltinFreeFunctionSpec>, { kind: "range_algorithm" }>,
   args: ExprNode[],
   line: number,
   col: number,
   context: ValidationContext,
 ): TypeNode | null {
-  const expectedArgs = callee === "sort" ? "2 or 3" : callee === "fill" ? "exactly 3" : "exactly 2";
-  const minArgs = callee === "fill" ? 3 : 2;
-  const maxArgs = callee === "sort" ? 3 : callee === "fill" ? 3 : 2;
-  if (args.length < minArgs || args.length > maxArgs) {
-    pushError(context, line, col, `${callee} requires ${expectedArgs} arguments`);
+  if (args.length < builtin.minArgs || args.length > builtin.maxArgs) {
+    pushError(
+      context,
+      line,
+      col,
+      `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+    );
   }
 
-  const rangeType = validateVectorRangeArgs(args[0], args[1], callee, context, line, col);
+  const rangeType = validateVectorRangeArgs(args[0], args[1], builtin.name, context, line, col);
 
-  if (callee === "fill") {
+  if (builtin.name === "fill") {
     validateExpr(args[2] ?? null, context, rangeType?.elementType);
-  } else if (callee === "sort" && args[2] !== undefined) {
+  } else if (builtin.name === "sort" && args[2] !== undefined) {
     const comparator = args[2];
     if (
       !(comparator.kind === "CallExpr" &&
-        isBuiltinTemplateComparatorName(comparator.callee) &&
+        getBuiltinTemplateComparatorSpec(comparator.callee) !== null &&
         comparator.args.length === 0)
     ) {
       pushError(context, comparator.line, comparator.col, "unsupported sort comparator");
