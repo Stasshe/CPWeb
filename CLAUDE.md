@@ -44,7 +44,17 @@ src/
 │       ├── type-support.ts
 │       └── support.ts
 ├── semantic/
-│   └── validator.ts
+│   ├── validator.ts
+│   ├── builtin-checker.ts
+│   ├── type-compat.ts
+│   └── type-utils.ts
+├── stdlib/
+│   ├── registry.ts
+│   ├── template-exprs.ts
+│   ├── template-types.ts
+│   └── builtins/
+│       ├── index.ts
+│       └── compare.ts
 └── debugger/
     └── session.ts
 ```

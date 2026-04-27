@@ -395,12 +395,10 @@ export abstract class ExpressionParser extends BaseParser {
     }
     const token = this.peek();
     const next = this.tokens[this.index + 1];
-    const comparator = token?.kind === "identifier" ? getBuiltinTemplateComparatorSpec(token.text) : null;
+    const comparator =
+      token?.kind === "identifier" ? getBuiltinTemplateComparatorSpec(token.text) : null;
     if (
-      !(
-        token?.kind === "identifier" ||
-        token?.kind === "keyword"
-      ) ||
+      !(token?.kind === "identifier" || token?.kind === "keyword") ||
       (comparator === null &&
         token.text !== "get" &&
         !this.checkKeyword("vector") &&
@@ -435,10 +433,7 @@ export abstract class ExpressionParser extends BaseParser {
 
   private parseTemplateExprArguments(templateName: string): TemplateArgNode[] | null {
     const args: TemplateArgNode[] = [];
-    if (
-      templateName === "greater" &&
-      this.checkSymbol(">")
-    ) {
+    if (templateName === "greater" && this.checkSymbol(">")) {
       return args;
     }
     while (true) {

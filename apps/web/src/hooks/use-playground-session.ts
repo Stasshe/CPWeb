@@ -1,9 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { EditorView } from "@codemirror/view";
-import { DebugSession } from "@/index";
-import type { DebugState } from "@/types";
 import {
   createPlaygroundEditorState,
   reconfigureBreakpoints,
@@ -19,6 +16,9 @@ import {
   starterSource,
   storageKeys,
 } from "@web/lib/state";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { DebugSession } from "@/index";
+import type { DebugState } from "@/types";
 
 function syncBreakpointState(session: DebugSession | null, nextBreakpoints: number[]) {
   if (!session) {
@@ -37,7 +37,9 @@ function syncBreakpointState(session: DebugSession | null, nextBreakpoints: numb
 export function usePlaygroundSession() {
   const [source, setSource] = useState(starterSource);
   const [input, setInput] = useState(starterInput);
-  const [execution, setExecution] = useState<DebugState>(() => createInitialExecution(starterInput));
+  const [execution, setExecution] = useState<DebugState>(() =>
+    createInitialExecution(starterInput),
+  );
   const [breakpoints, setBreakpoints] = useState<number[]>([]);
   const [isDirty, setIsDirty] = useState(false);
   const [activeOutputTab, setActiveOutputTab] = useState<"stdout" | "stderr">("stdout");
@@ -55,7 +57,7 @@ export function usePlaygroundSession() {
 
   const arraysByRef = useMemo(
     () => new Map(execution.arrays.map((array) => [array.ref, array])),
-    [execution.arrays]
+    [execution.arrays],
   );
 
   const hasSession = sessionRef.current !== null;
@@ -80,7 +82,7 @@ export function usePlaygroundSession() {
 
   const runAction = (
     action: (session: DebugSession) => DebugState,
-    options: { restart?: boolean } = {}
+    options: { restart?: boolean } = {},
   ) => {
     startTransition(() => {
       let session = sessionRef.current;

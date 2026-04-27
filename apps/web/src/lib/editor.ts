@@ -1,22 +1,16 @@
+import type { CompletionSource } from "@codemirror/autocomplete";
 import {
-  autocompletion,
   acceptCompletion,
+  autocompletion,
   closeBrackets,
   closeBracketsKeymap,
   completeAnyWord,
   completionKeymap,
   completionStatus,
 } from "@codemirror/autocomplete";
-import {
-  defaultKeymap,
-  history,
-  historyKeymap,
-  indentWithTab,
-} from "@codemirror/commands";
-import type { CompletionSource } from "@codemirror/autocomplete";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { cpp } from "@codemirror/lang-cpp";
 import { bracketMatching, foldGutter, indentOnInput, indentUnit } from "@codemirror/language";
-import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import {
   gotoLine,
   highlightSelectionMatches,
@@ -25,20 +19,21 @@ import {
   searchKeymap,
 } from "@codemirror/search";
 import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
-import type { DebugExecutionRange } from "@/types";
 import {
+  crosshairCursor,
   Decoration,
+  drawSelection,
   EditorView,
   GutterMarker,
-  crosshairCursor,
-  drawSelection,
   gutter,
   highlightActiveLineGutter,
   keymap,
   lineNumbers,
   rectangularSelection,
 } from "@codemirror/view";
+import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import { dracula } from "thememirror";
+import type { DebugExecutionRange } from "@/types";
 
 const acMainSnippet = `#include <bits/stdc++.h>
 using namespace std;
@@ -117,10 +112,7 @@ const executionMarker = new ExecutionMarker();
 export const breakpointCompartment = new Compartment();
 export const executionCompartment = new Compartment();
 
-function createBreakpointGutter(
-  breakpoints: number[],
-  onToggle: (line: number) => void
-) {
+function createBreakpointGutter(breakpoints: number[], onToggle: (line: number) => void) {
   const lines = new Set(breakpoints);
 
   return gutter({
@@ -165,7 +157,7 @@ function getOffsetForPosition(view: EditorView, lineNumber: number, col: number)
 function createExecutionDecorations(
   lineFrom: number | null,
   executionRange: DebugExecutionRange | null,
-  view?: EditorView
+  view?: EditorView,
 ) {
   if (lineFrom === null) {
     return EditorView.decorations.of(Decoration.none);
@@ -183,7 +175,7 @@ function createExecutionDecorations(
       decorations.push(
         Decoration.mark({
           attributes: { class: `cm-execution-range cm-execution-range-${executionRange.level}` },
-        }).range(from, to)
+        }).range(from, to),
       );
     }
   }
@@ -322,11 +314,11 @@ export function createPlaygroundEditorState({
 export function reconfigureBreakpoints(
   view: EditorView,
   breakpoints: number[],
-  onToggleBreakpoint: (line: number) => void
+  onToggleBreakpoint: (line: number) => void,
 ) {
   view.dispatch({
     effects: breakpointCompartment.reconfigure(
-      createBreakpointGutter(breakpoints, onToggleBreakpoint)
+      createBreakpointGutter(breakpoints, onToggleBreakpoint),
     ),
   });
 }
@@ -334,7 +326,7 @@ export function reconfigureBreakpoints(
 export function reconfigureExecution(
   view: EditorView,
   lineNumber: number | null,
-  executionRange: DebugExecutionRange | null
+  executionRange: DebugExecutionRange | null,
 ) {
   const activeLineFrom =
     lineNumber !== null && lineNumber >= 1 && lineNumber <= view.state.doc.lines
@@ -475,9 +467,10 @@ export const editorTheme = EditorView.theme({
     gap: "6px",
     fontFamily: "var(--font-ui)",
   },
-  ".cm-panel.cm-search input, .cm-panel.cm-search button, .cm-gotoLineDialog input, .cm-gotoLineDialog button": {
-    font: "inherit",
-  },
+  ".cm-panel.cm-search input, .cm-panel.cm-search button, .cm-gotoLineDialog input, .cm-gotoLineDialog button":
+    {
+      font: "inherit",
+    },
   ".cm-textfield": {
     backgroundColor: "var(--bg2)",
     color: "var(--text)",

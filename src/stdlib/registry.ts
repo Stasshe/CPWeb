@@ -55,12 +55,13 @@ export type BuiltinFreeFunctionSpec =
   | BuiltinTemplateFactorySpec
   | BuiltinTemplateComparatorSpec;
 
-const SUPPORTED_TEMPLATE_TYPE_SPECS: Record<SupportedTemplateTypeName, SupportedTemplateTypeSpec> = {
-  vector: { kind: "template_type", name: "vector", arity: 1 },
-  map: { kind: "template_type", name: "map", arity: 2 },
-  pair: { kind: "template_type", name: "pair", arity: 2 },
-  tuple: { kind: "template_type", name: "tuple", arity: -1 },
-};
+const SUPPORTED_TEMPLATE_TYPE_SPECS: Record<SupportedTemplateTypeName, SupportedTemplateTypeSpec> =
+  {
+    vector: { kind: "template_type", name: "vector", arity: 1 },
+    map: { kind: "template_type", name: "map", arity: 2 },
+    pair: { kind: "template_type", name: "pair", arity: 2 },
+    tuple: { kind: "template_type", name: "tuple", arity: -1 },
+  };
 
 const UNSUPPORTED_TEMPLATE_TYPE_SPECS: Record<
   UnsupportedTemplateTypeName,
@@ -72,14 +73,12 @@ const UNSUPPORTED_TEMPLATE_TYPE_SPECS: Record<
   unordered_set: { kind: "unsupported_template_type", name: "unordered_set" },
 };
 
-const BUILTIN_RANGE_ALGORITHM_SPECS: Record<
-  BuiltinRangeAlgorithmName,
-  BuiltinRangeAlgorithmSpec
-> = {
-  sort: { kind: "range_algorithm", name: "sort", minArgs: 2, maxArgs: 3 },
-  reverse: { kind: "range_algorithm", name: "reverse", minArgs: 2, maxArgs: 2 },
-  fill: { kind: "range_algorithm", name: "fill", minArgs: 3, maxArgs: 3 },
-};
+const BUILTIN_RANGE_ALGORITHM_SPECS: Record<BuiltinRangeAlgorithmName, BuiltinRangeAlgorithmSpec> =
+  {
+    sort: { kind: "range_algorithm", name: "sort", minArgs: 2, maxArgs: 3 },
+    reverse: { kind: "range_algorithm", name: "reverse", minArgs: 2, maxArgs: 2 },
+    fill: { kind: "range_algorithm", name: "fill", minArgs: 3, maxArgs: 3 },
+  };
 
 const BUILTIN_VALUE_FUNCTION_SPECS: Record<BuiltinValueFunctionName, BuiltinValueFunctionSpec> = {
   abs: { kind: "value_function", name: "abs", minArgs: 1, maxArgs: 1 },
@@ -93,7 +92,12 @@ const BUILTIN_TEMPLATE_FACTORY_SPECS: Record<
   BuiltinTemplateFactorySpec
 > = {
   make_pair: { kind: "template_factory", name: "make_pair", minArgs: 2, maxArgs: 2 },
-  make_tuple: { kind: "template_factory", name: "make_tuple", minArgs: 1, maxArgs: Number.POSITIVE_INFINITY },
+  make_tuple: {
+    kind: "template_factory",
+    name: "make_tuple",
+    minArgs: 1,
+    maxArgs: Number.POSITIVE_INFINITY,
+  },
 };
 
 const BUILTIN_TEMPLATE_COMPARATOR_SPECS: Record<
@@ -146,10 +150,7 @@ export function getBuiltinFreeFunctionSpec(value: string): BuiltinFreeFunctionSp
   return BUILTIN_FREE_FUNCTION_SPECS[value] ?? null;
 }
 
-export function describeBuiltinArity(spec: {
-  minArgs: number;
-  maxArgs: number;
-}): string {
+export function describeBuiltinArity(spec: { minArgs: number; maxArgs: number }): string {
   if (spec.maxArgs === Number.POSITIVE_INFINITY) {
     return `at least ${spec.minArgs.toString()}`;
   }
@@ -159,33 +160,23 @@ export function describeBuiltinArity(spec: {
   return `${spec.minArgs.toString()} or ${spec.maxArgs.toString()}`;
 }
 
-export function isSupportedTemplateTypeName(
-  value: string,
-): value is SupportedTemplateTypeName {
+export function isSupportedTemplateTypeName(value: string): value is SupportedTemplateTypeName {
   return getSupportedTemplateTypeSpec(value) !== null;
 }
 
-export function isUnsupportedTemplateTypeName(
-  value: string,
-): value is UnsupportedTemplateTypeName {
+export function isUnsupportedTemplateTypeName(value: string): value is UnsupportedTemplateTypeName {
   return getUnsupportedTemplateTypeSpec(value) !== null;
 }
 
-export function isBuiltinRangeAlgorithmName(
-  value: string,
-): value is BuiltinRangeAlgorithmName {
+export function isBuiltinRangeAlgorithmName(value: string): value is BuiltinRangeAlgorithmName {
   return getBuiltinRangeAlgorithmSpec(value) !== null;
 }
 
-export function isBuiltinValueFunctionName(
-  value: string,
-): value is BuiltinValueFunctionName {
+export function isBuiltinValueFunctionName(value: string): value is BuiltinValueFunctionName {
   return getBuiltinValueFunctionSpec(value) !== null;
 }
 
-export function isBuiltinTemplateFactoryName(
-  value: string,
-): value is BuiltinTemplateFactoryName {
+export function isBuiltinTemplateFactoryName(value: string): value is BuiltinTemplateFactoryName {
   return getBuiltinTemplateFactorySpec(value) !== null;
 }
 

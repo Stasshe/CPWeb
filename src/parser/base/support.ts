@@ -1,5 +1,5 @@
-import { isTupleGetTemplateCall } from "@/stdlib/template-exprs";
 import { getUnsupportedTemplateTypeSpec } from "@/stdlib/registry";
+import { isTupleGetTemplateCall } from "@/stdlib/template-exprs";
 import type {
   ArrayDeclNode,
   AssignTargetNode,

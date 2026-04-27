@@ -1,6 +1,7 @@
 @font-face {
   font-family: "JuliaMono";
-  src: url("https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.061/JuliaMono-Regular.woff2") format("woff2");
+  src: url("https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.061/JuliaMono-Regular.woff2")
+    format("woff2");
   font-style: normal;
   font-weight: 400;
 }
@@ -9,35 +10,35 @@
 @tailwind components;
 @tailwind utilities;
 
-
-
 :root {
   color-scheme: dark;
-  --bg:          #1e1e1e;
-  --bg2:         #252526;
-  --bg3:         #2d2d30;
-  --bg4:         #333337;
-  --border:      #3c3c3c;
-  --border2:     #555;
-  --text:        #cccccc;
-  --text-dim:    #858585;
+  --bg: #1e1e1e;
+  --bg2: #252526;
+  --bg3: #2d2d30;
+  --bg4: #333337;
+  --border: #3c3c3c;
+  --border2: #555;
+  --text: #cccccc;
+  --text-dim: #858585;
   --text-bright: #e8e8e8;
-  --accent:      #4fc1ff;
-  --accent2:     #569cd6;
-  --green:       #4ec9b0;
-  --yellow:      #dcdcaa;
-  --orange:      #ce9178;
-  --red:         #f44747;
-  --purple:      #c586c0;
-  --bp:          #e51400;
-  --hl-line:     rgba(255,255,255,0.07);
-  --font-ui:     'Segoe UI', system-ui, sans-serif;
-  --font-mono:   'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --accent: #4fc1ff;
+  --accent2: #569cd6;
+  --green: #4ec9b0;
+  --yellow: #dcdcaa;
+  --orange: #ce9178;
+  --red: #f44747;
+  --purple: #c586c0;
+  --bp: #e51400;
+  --hl-line: rgba(255, 255, 255, 0.07);
+  --font-ui: "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "Fira Code", "Consolas", monospace;
   font-size: 10.5px;
 }
 
 @layer base {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     box-sizing: border-box;
   }
 

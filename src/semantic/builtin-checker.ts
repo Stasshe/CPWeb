@@ -5,19 +5,26 @@ import {
   getSupportedTemplateTypeSpec,
 } from "@/stdlib/registry";
 import {
-  pairFirstType,
-  pairSecondType,
-  tupleElementTypes,
-  vectorElementType,
-} from "@/stdlib/template-types";
-import {
   getSingleIntTemplateArg,
   getSingleTypeTemplateArg,
   isTemplateNamed,
 } from "@/stdlib/template-exprs";
 import {
-  isPointerType,
+  pairFirstType,
+  pairSecondType,
+  tupleElementTypes,
+  vectorElementType,
+} from "@/stdlib/template-types";
+import type {
+  CompileError,
+  ExprNode,
+  TemplateCallExprNode,
+  TypeNode,
+  VectorTypeNode,
+} from "@/types";
+import {
   isPairType,
+  isPointerType,
   isReferenceType,
   isTupleType,
   isVectorType,
@@ -26,14 +33,7 @@ import {
   typeToString,
   vectorType,
 } from "@/types";
-import type {
-  CompileError,
-  ExprNode,
-  TemplateCallExprNode,
-  TypeNode,
-  VectorTypeNode,
-} from "@/types";
-import { isAssignableExpr, isAssignable, sameType } from "./type-compat";
+import { isAssignable, isAssignableExpr, sameType } from "./type-compat";
 import { isIntType, isNumericType } from "./type-utils";
 
 export type ValidationContext = {
@@ -50,10 +50,7 @@ export type ValidateExprFn = (
   expected?: TypeNode | "bool" | "int",
 ) => TypeNode | null;
 
-export type InferExprTypeFn = (
-  expr: ExprNode,
-  context: ValidationContext,
-) => TypeNode | null;
+export type InferExprTypeFn = (expr: ExprNode, context: ValidationContext) => TypeNode | null;
 
 export function validateBuiltinCall(
   callee: string,
@@ -74,21 +71,36 @@ export function validateBuiltinCall(
       switch (builtin.name) {
         case "abs":
           if (args.length !== builtin.maxArgs) {
-            pushError(context, line, col, `${builtin.name} requires ${describeBuiltinArity(builtin)} argument`);
+            pushError(
+              context,
+              line,
+              col,
+              `${builtin.name} requires ${describeBuiltinArity(builtin)} argument`,
+            );
           }
           validateExpr(args[0] ?? null, context, "int");
           return { kind: "PrimitiveType", name: "int" };
         case "max":
         case "min":
           if (args.length !== builtin.maxArgs) {
-            pushError(context, line, col, `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`);
+            pushError(
+              context,
+              line,
+              col,
+              `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+            );
           }
           validateExpr(args[0] ?? null, context, "int");
           validateExpr(args[1] ?? null, context, "int");
           return { kind: "PrimitiveType", name: "int" };
         case "swap": {
           if (args.length !== builtin.maxArgs) {
-            pushError(context, line, col, `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`);
+            pushError(
+              context,
+              line,
+              col,
+              `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+            );
           }
           const left = args[0];
           const right = args[1];
@@ -104,7 +116,9 @@ export function validateBuiltinCall(
               }
               if (leftType !== null && rightType !== null && !isAssignable(rightType, leftType)) {
                 pushError(
-                  context, line, col,
+                  context,
+                  line,
+                  col,
                   `cannot convert '${typeToString(rightType)}' to '${typeToString(leftType)}'`,
                 );
               }
@@ -120,7 +134,12 @@ export function validateBuiltinCall(
       switch (builtin.name) {
         case "make_pair": {
           if (args.length !== builtin.maxArgs) {
-            pushError(context, line, col, `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`);
+            pushError(
+              context,
+              line,
+              col,
+              `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+            );
           }
           const firstType = validateExpr(args[0] ?? null, context);
           const secondType = validateExpr(args[1] ?? null, context);
@@ -131,7 +150,12 @@ export function validateBuiltinCall(
         }
         case "make_tuple": {
           if (args.length < builtin.minArgs) {
-            pushError(context, line, col, `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`);
+            pushError(
+              context,
+              line,
+              col,
+              `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+            );
             return null;
           }
           const elementTypes: TypeNode[] = [];
@@ -165,7 +189,12 @@ export function validateTemplateCall(
   if (isTemplateNamed(expr.callee, "get")) {
     const index = getSingleIntTemplateArg(expr.callee);
     if (index === null) {
-      pushError(context, expr.line, expr.col, "get requires a single non-negative integer template argument");
+      pushError(
+        context,
+        expr.line,
+        expr.col,
+        "get requires a single non-negative integer template argument",
+      );
       return null;
     }
     const tupleExpr = expr.args[0];
@@ -184,7 +213,9 @@ export function validateTemplateCall(
     const elementType = elementTypes[index];
     if (elementType === undefined) {
       pushError(
-        context, expr.line, expr.col,
+        context,
+        expr.line,
+        expr.col,
         `tuple index ${index.toString()} out of range for tuple of size ${elementTypes.length}`,
       );
       return null;
@@ -196,10 +227,18 @@ export function validateTemplateCall(
     return null;
   }
 
-  if (getSupportedTemplateTypeSpec(expr.callee.template) !== null && expr.callee.template === "vector") {
+  if (
+    getSupportedTemplateTypeSpec(expr.callee.template) !== null &&
+    expr.callee.template === "vector"
+  ) {
     const elementType = getSingleTypeTemplateArg(expr.callee);
     if (elementType === null) {
-      pushError(context, expr.line, expr.col, "vector constructor requires exactly 1 type argument");
+      pushError(
+        context,
+        expr.line,
+        expr.col,
+        "vector constructor requires exactly 1 type argument",
+      );
       return null;
     }
     const vType = vectorType(elementType);
@@ -319,11 +358,23 @@ function validateRangeBuiltin(
   inferExprType: InferExprTypeFn,
 ): TypeNode | null {
   if (args.length < builtin.minArgs || args.length > builtin.maxArgs) {
-    pushError(context, line, col, `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`);
+    pushError(
+      context,
+      line,
+      col,
+      `${builtin.name} requires ${describeBuiltinArity(builtin)} arguments`,
+    );
   }
 
   const rangeType = validateVectorRangeArgs(
-    args[0], args[1], builtin.name, context, line, col, validateExpr, inferExprType,
+    args[0],
+    args[1],
+    builtin.name,
+    context,
+    line,
+    col,
+    validateExpr,
+    inferExprType,
   );
 
   if (builtin.name === "fill") {
@@ -335,9 +386,11 @@ function validateRangeBuiltin(
   } else if (builtin.name === "sort" && args[2] !== undefined) {
     const comparator = args[2];
     if (
-      !(comparator.kind === "TemplateCallExpr" &&
+      !(
+        comparator.kind === "TemplateCallExpr" &&
         getBuiltinTemplateComparatorSpec(comparator.callee.template) !== null &&
-        comparator.args.length === 0)
+        comparator.args.length === 0
+      )
     ) {
       pushError(context, comparator.line, comparator.col, "unsupported sort comparator");
     }

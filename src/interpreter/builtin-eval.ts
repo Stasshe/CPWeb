@@ -1,3 +1,10 @@
+import type { RuntimeLocation, RuntimeValue } from "@/runtime/value";
+import {
+  compareSortableValues,
+  compareValues,
+  sameLocation,
+  toNumericOperands,
+} from "@/stdlib/builtins/compare";
 import {
   describeBuiltinArity,
   getBuiltinFreeFunctionSpec,
@@ -5,24 +12,17 @@ import {
   getSupportedTemplateTypeSpec,
 } from "@/stdlib/registry";
 import {
-  mapKeyType,
-  mapValueType,
-  tupleElementTypes,
-  vectorElementType,
-} from "@/stdlib/template-types";
-import {
   getSingleIntTemplateArg,
   getSingleTypeTemplateArg,
   isTemplateNamed,
   isTupleGetTemplateCall,
 } from "@/stdlib/template-exprs";
 import {
-  compareValues,
-  compareSortableValues,
-  sameLocation,
-  toNumericOperands,
-} from "@/stdlib/builtins/compare";
-import type { RuntimeLocation, RuntimeValue } from "@/runtime/value";
+  mapKeyType,
+  mapValueType,
+  tupleElementTypes,
+  vectorElementType,
+} from "@/stdlib/template-types";
 import type { AssignTargetNode, ExprNode, TemplateCallExprNode, VectorTypeNode } from "@/types";
 import { isVectorType, pairType, tupleType, vectorType } from "@/types";
 
@@ -34,12 +34,20 @@ export interface EvalCtx {
   expectInt(value: RuntimeValue, line: number): Extract<RuntimeValue, { kind: "int" }>;
   expectBool(value: RuntimeValue, line: number): Extract<RuntimeValue, { kind: "bool" }>;
   expectArray(value: RuntimeValue, line: number): Extract<RuntimeValue, { kind: "array" }>;
-  ensureInitialized(value: RuntimeValue, line: number, what: string): Exclude<RuntimeValue, { kind: "uninitialized" }>;
+  ensureInitialized(
+    value: RuntimeValue,
+    line: number,
+    what: string,
+  ): Exclude<RuntimeValue, { kind: "uninitialized" }>;
   ensureNotVoid(
     value: Exclude<RuntimeValue, { kind: "uninitialized" }>,
     line: number,
   ): Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>;
-  castToElementType(value: RuntimeValue, elementType: import("@/types").TypeNode, line: number): RuntimeValue;
+  castToElementType(
+    value: RuntimeValue,
+    elementType: import("@/types").TypeNode,
+    line: number,
+  ): RuntimeValue;
   runtimeValueToType(value: RuntimeValue, line: number): import("@/types").TypeNode;
   defaultValueForType(type: import("@/types").TypeNode, line: number): RuntimeValue;
   isAssignableTarget(expr: ExprNode): expr is AssignTargetNode;
@@ -86,9 +94,8 @@ export function tryEvaluateBuiltinCall(
           const right: bigint = ctx.expectInt(ctx.evaluateExpr(args[1] as ExprNode), line).value;
           return {
             kind: "int",
-            value: builtin.name === "max"
-              ? (left > right ? left : right)
-              : (left < right ? left : right),
+            value:
+              builtin.name === "max" ? (left > right ? left : right) : left < right ? left : right,
           };
         }
         case "swap": {
@@ -197,7 +204,10 @@ export function evaluateTemplateCall(
     return ctx.fail(`'${expr.callee.template}' was not declared in this scope`, expr.line);
   }
 
-  if (getSupportedTemplateTypeSpec(expr.callee.template) !== null && expr.callee.template === "vector") {
+  if (
+    getSupportedTemplateTypeSpec(expr.callee.template) !== null &&
+    expr.callee.template === "vector"
+  ) {
     const elementType = getSingleTypeTemplateArg(expr.callee);
     if (elementType === null) {
       ctx.fail("vector constructor requires exactly 1 type argument", expr.line);
@@ -431,9 +441,9 @@ function sameReceiver(left: ExprNode, right: ExprNode): boolean {
 }
 
 export {
-  compareValues,
   compareSortableValues,
+  compareValues,
+  isTupleGetTemplateCall,
   sameLocation,
   toNumericOperands,
-  isTupleGetTemplateCall,
 };

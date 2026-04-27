@@ -20,15 +20,35 @@ export function compareValues(
 
   switch (left.kind) {
     case "int":
-      return comparePrimitive(left.value, (right as { kind: "int"; value: bigint }).value, operator);
+      return comparePrimitive(
+        left.value,
+        (right as { kind: "int"; value: bigint }).value,
+        operator,
+      );
     case "double":
-      return comparePrimitive(left.value, (right as { kind: "double"; value: number }).value, operator);
+      return comparePrimitive(
+        left.value,
+        (right as { kind: "double"; value: number }).value,
+        operator,
+      );
     case "bool":
-      return comparePrimitive(left.value, (right as { kind: "bool"; value: boolean }).value, operator);
+      return comparePrimitive(
+        left.value,
+        (right as { kind: "bool"; value: boolean }).value,
+        operator,
+      );
     case "char":
-      return comparePrimitive(left.value, (right as { kind: "char"; value: string }).value, operator);
+      return comparePrimitive(
+        left.value,
+        (right as { kind: "char"; value: string }).value,
+        operator,
+      );
     case "string":
-      return comparePrimitive(left.value, (right as { kind: "string"; value: string }).value, operator);
+      return comparePrimitive(
+        left.value,
+        (right as { kind: "string"; value: string }).value,
+        operator,
+      );
     case "pointer":
       return comparePrimitive(
         left.target,
@@ -127,9 +147,7 @@ export function toNumericOperands(
   return { mode: "int", left: toIntegerValue(left), right: toIntegerValue(right) };
 }
 
-function toIntegerValue(
-  value: Extract<RuntimeValue, { kind: "int" | "double" | "char" }>,
-): bigint {
+function toIntegerValue(value: Extract<RuntimeValue, { kind: "int" | "double" | "char" }>): bigint {
   if (value.kind === "int") {
     return value.value;
   }

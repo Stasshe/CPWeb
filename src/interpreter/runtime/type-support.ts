@@ -69,7 +69,9 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       return {
         kind: "tuple",
         type,
-        values: tupleElementTypes(type).map((elementType) => this.defaultValueForType(elementType, line)),
+        values: tupleElementTypes(type).map((elementType) =>
+          this.defaultValueForType(elementType, line),
+        ),
       };
     }
     this.fail("fixed array value requires dimensions", line);
@@ -318,7 +320,11 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       return isPrimitiveType(left) && isPrimitiveType(right) && left.name === right.name;
     }
     if (isArrayType(left) || isArrayType(right)) {
-      return isArrayType(left) && isArrayType(right) && this.sameType(left.elementType, right.elementType);
+      return (
+        isArrayType(left) &&
+        isArrayType(right) &&
+        this.sameType(left.elementType, right.elementType)
+      );
     }
     if (isVectorType(left) || isVectorType(right)) {
       return (
@@ -357,7 +363,11 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       );
     }
     if (isPointerType(left) || isPointerType(right)) {
-      return isPointerType(left) && isPointerType(right) && this.sameType(left.pointeeType, right.pointeeType);
+      return (
+        isPointerType(left) &&
+        isPointerType(right) &&
+        this.sameType(left.pointeeType, right.pointeeType)
+      );
     }
     return (
       isReferenceType(left) &&

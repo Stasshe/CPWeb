@@ -201,7 +201,9 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
     }
     const slots: Array<{ assign: (value: RuntimeValue, assignLine: number) => void }> = [];
     for (let i = 0; i < store.values.length; i += 1) {
-      const elementType = isArrayType(store.type) ? store.type.elementType : vectorElementType(store.type);
+      const elementType = isArrayType(store.type)
+        ? store.type.elementType
+        : vectorElementType(store.type);
       if (elementType.kind === "ArrayType") {
         const nested = store.values[i];
         if (nested !== undefined) {
@@ -263,7 +265,10 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
               ? pairType(mapKeyType(parent.type), mapValueType(parent.type))
               : (location.type as ReturnType<typeof pairType>),
             first: entry.key,
-            second: entry.value.kind === "reference" ? this.readLocation(entry.value.target, line) : entry.value,
+            second:
+              entry.value.kind === "reference"
+                ? this.readLocation(entry.value.target, line)
+                : entry.value,
           };
         }
         return entry.value.kind === "reference"

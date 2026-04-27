@@ -178,7 +178,11 @@ export abstract class InterpreterRuntimeCore {
       if (size < 0n) {
         this.fail("vector size must be non-negative", line);
       }
-      const fillValue = this.castToElementType(args[1] as RuntimeValue, vectorElementType(type), line);
+      const fillValue = this.castToElementType(
+        args[1] as RuntimeValue,
+        vectorElementType(type),
+        line,
+      );
       values = Array.from({ length: Number(size) }, () => fillValue);
     } else if (args.length > 2) {
       this.fail("too many arguments for vector constructor", line);

@@ -1,8 +1,11 @@
+import { getSupportedTemplateTypeSpec } from "@/stdlib/registry";
 import {
-  getSupportedTemplateTypeSpec,
-} from "@/stdlib/registry";
-import { vectorElementType } from "@/stdlib/template-types";
-import { vectorType } from "@/types";
+  mapKeyType,
+  mapValueType,
+  pairFirstType,
+  pairSecondType,
+  vectorElementType,
+} from "@/stdlib/template-types";
 import type {
   CompileError,
   ExprNode,
@@ -23,36 +26,37 @@ import {
   isVectorType,
   pairType,
   typeToString,
+  vectorType,
 } from "@/types";
 import {
-  mapKeyType,
-  mapValueType,
-  pairFirstType,
-  pairSecondType,
-} from "@/stdlib/template-types";
-import { sameType, isAssignable, isAssignableExpr, inferBinaryType, resolveConditionalType } from "./type-compat";
+  type ValidationContext,
+  validateBuiltinCall,
+  validateMethodCall,
+  validateTemplateCall,
+} from "./builtin-checker";
 import {
-  isIntType,
-  isDoubleType,
-  isNumericType,
+  inferBinaryType,
+  isAssignable,
+  isAssignableExpr,
+  resolveConditionalType,
+  sameType,
+} from "./type-compat";
+import {
+  baseElementType,
+  containsReferenceBelowTopLevel,
+  containsVoid,
   isBoolType,
-  isStringType,
+  isDoubleType,
+  isInputTargetType,
+  isIntType,
   isNullPointerConstantExpr,
   isNullPointerType,
-  isInputTargetType,
-  containsVoid,
-  containsReferenceBelowTopLevel,
-  baseElementType,
+  isNumericType,
+  isStringType,
   unwrapReference,
 } from "./type-utils";
-import {
-  validateBuiltinCall,
-  validateTemplateCall,
-  validateMethodCall,
-  type ValidationContext,
-} from "./builtin-checker";
 
-export { type ValidationContext };
+export type { ValidationContext };
 
 export function validateProgram(program: ProgramNode): CompileError[] {
   const { functions, errors } = collectFunctions(program);
@@ -146,7 +150,9 @@ function validateParameterType(
 function validateFunctionReturnType(fn: FunctionDeclNode, context: ValidationContext): void {
   if (fn.returnType.kind === "ArrayType" || fn.returnType.kind === "ReferenceType") {
     pushError(
-      context, fn.line, fn.col,
+      context,
+      fn.line,
+      fn.col,
       `function return type cannot be ${fn.returnType.kind === "ArrayType" ? "array" : "reference"}`,
     );
   }
@@ -253,7 +259,12 @@ function validateDecl(
   switch (stmt.kind) {
     case "VarDecl":
       if (isArrayType(stmt.type) || isVectorType(stmt.type)) {
-        pushError(context, stmt.line, stmt.col, `variable type cannot be '${typeToString(stmt.type)}'`);
+        pushError(
+          context,
+          stmt.line,
+          stmt.col,
+          `variable type cannot be '${typeToString(stmt.type)}'`,
+        );
       } else if (containsVoid(stmt.type)) {
         pushError(context, stmt.line, stmt.col, "variable type cannot be void");
       }
@@ -315,7 +326,9 @@ function validateRangeFor(stmt: RangeForStmtNode, context: ValidationContext): v
 
   if (!isAssignable(elementType ?? itemType, itemType)) {
     pushError(
-      context, stmt.line, stmt.col,
+      context,
+      stmt.line,
+      stmt.col,
       `cannot convert '${typeToString(elementType ?? itemType)}' to '${typeToString(itemType)}'`,
     );
   }
@@ -324,7 +337,9 @@ function validateRangeFor(stmt: RangeForStmtNode, context: ValidationContext): v
   defineSymbol(
     stmt.itemName,
     stmt.itemByReference ? { kind: "ReferenceType", referredType: itemType } : itemType,
-    stmt.line, stmt.col, context,
+    stmt.line,
+    stmt.col,
+    context,
   );
   validateBlock(stmt.body.statements, context);
   popScope(context);
@@ -340,12 +355,22 @@ function validateReturn(
   }
   if (isPrimitiveType(returnType) && returnType.name === "void") {
     if (stmt.value !== null) {
-      pushError(context, stmt.line, stmt.col, "return-statement with a value, in function returning 'void'");
+      pushError(
+        context,
+        stmt.line,
+        stmt.col,
+        "return-statement with a value, in function returning 'void'",
+      );
     }
     return;
   }
   if (stmt.value === null) {
-    pushError(context, stmt.line, stmt.col, "return-statement with no value, in function returning non-void");
+    pushError(
+      context,
+      stmt.line,
+      stmt.col,
+      "return-statement with no value, in function returning non-void",
+    );
     return;
   }
   validateExpr(stmt.value, context, returnType);
@@ -367,7 +392,9 @@ export function validateExpr(
     }
     if (!isAssignable(type, expectedType)) {
       pushError(
-        context, expr.line, expr.col,
+        context,
+        expr.line,
+        expr.col,
         `cannot convert '${typeToString(type)}' to '${typeToString(expectedType)}'`,
       );
     }
@@ -428,7 +455,12 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
       if (getSupportedTemplateTypeSpec(expr.template) !== null) {
         return null;
       }
-      pushError(context, expr.line, expr.col, `'${typeToString({ kind: "NamedType", name: expr.template })}' does not name a value`);
+      pushError(
+        context,
+        expr.line,
+        expr.col,
+        `'${typeToString({ kind: "NamedType", name: expr.template })}' does not name a value`,
+      );
       return null;
     case "AssignExpr": {
       const targetType = inferLValueType(expr.target, context);
@@ -464,7 +496,10 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
       const thenType = validateExpr(expr.thenExpr, context);
       const elseType = validateExpr(expr.elseExpr, context);
       const resultType = resolveConditionalType(
-        thenType, elseType, expr.line, expr.col,
+        thenType,
+        elseType,
+        expr.line,
+        expr.col,
         (line, col, msg) => pushError(context, line, col, msg),
       );
       expr.resolvedType = resultType;
@@ -505,7 +540,9 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
     case "BinaryExpr": {
       const left = inferExprType(expr.left, context);
       const right = inferExprType(expr.right, context);
-      return inferBinaryType(expr, left, right, (line, col, msg) => pushError(context, line, col, msg));
+      return inferBinaryType(expr, left, right, (line, col, msg) =>
+        pushError(context, line, col, msg),
+      );
     }
     case "CallExpr":
       return validateCall(expr.callee, expr.args, expr.line, expr.col, context);
@@ -513,8 +550,14 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
       return validateTemplateCall(expr, context, validateExpr, inferExprType);
     case "MethodCallExpr":
       return validateMethodCall(
-        expr.receiver, expr.method, expr.args, expr.line, expr.col,
-        context, validateExpr, inferExprType,
+        expr.receiver,
+        expr.method,
+        expr.args,
+        expr.line,
+        expr.col,
+        context,
+        validateExpr,
+        inferExprType,
       );
   }
 }
@@ -542,7 +585,15 @@ function validateCall(
     return fn.returnType;
   }
 
-  const builtin = validateBuiltinCall(callee, args, line, col, context, validateExpr, inferExprType);
+  const builtin = validateBuiltinCall(
+    callee,
+    args,
+    line,
+    col,
+    context,
+    validateExpr,
+    inferExprType,
+  );
   if (builtin !== undefined) {
     return builtin;
   }
@@ -627,7 +678,9 @@ function validateReferenceBinding(
   }
   if (actual !== null && !isAssignable(actual, expected)) {
     pushError(
-      context, expr.line, expr.col,
+      context,
+      expr.line,
+      expr.col,
       `cannot convert '${typeToString(actual)}' to '${typeToString(expected)}'`,
     );
   }
@@ -643,10 +696,20 @@ function validateArgumentAgainstParam(
     return;
   }
   if (isReferenceType(paramType)) {
-    validateReferenceBinding(arg, paramType.referredType, context, "reference argument must be an lvalue");
+    validateReferenceBinding(
+      arg,
+      paramType.referredType,
+      context,
+      "reference argument must be an lvalue",
+    );
     return;
   }
-  if (isPointerType(paramType) && arg.kind === "Literal" && arg.valueType === "int" && arg.value === 0n) {
+  if (
+    isPointerType(paramType) &&
+    arg.kind === "Literal" &&
+    arg.valueType === "int" &&
+    arg.value === 0n
+  ) {
     return;
   }
   validateExpr(arg, context, paramType);

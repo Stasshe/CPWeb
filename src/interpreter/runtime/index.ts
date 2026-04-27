@@ -53,7 +53,9 @@ export function buildDebugInfoView(
     globalVars: serializeScope(globals),
     arrays: Array.from(arrays.entries()).map(([ref, store]) => ({
       ref,
-      elementType: typeToString(isVectorType(store.type) ? vectorElementType(store.type) : store.type.elementType),
+      elementType: typeToString(
+        isVectorType(store.type) ? vectorElementType(store.type) : store.type.elementType,
+      ),
       dynamic: isVectorType(store.type),
       values: store.values.map((value) => serializeValue(value)),
     })),

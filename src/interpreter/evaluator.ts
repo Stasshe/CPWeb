@@ -1,16 +1,12 @@
+import type { RuntimeLocation, RuntimeValue } from "@/runtime/value";
 import {
-  mapValueType,
-  tupleElementTypes,
-  vectorElementType,
-} from "@/stdlib/template-types";
-import { isTupleGetTemplateCall } from "@/stdlib/template-exprs";
-import {
-  compareValues,
   compareSortableValues,
+  compareValues,
   sameLocation,
   toNumericOperands,
 } from "@/stdlib/builtins/compare";
-import type { RuntimeLocation, RuntimeValue } from "@/runtime/value";
+import { isTupleGetTemplateCall } from "@/stdlib/template-exprs";
+import { mapValueType, tupleElementTypes, vectorElementType } from "@/stdlib/template-types";
 import type {
   AssignTargetNode,
   BinaryExprNode,
@@ -19,13 +15,13 @@ import type {
   TypeNode,
 } from "@/types";
 import { isVectorType } from "@/types";
-import { InterpreterRuntime } from "./runtime";
 import {
-  tryEvaluateBuiltinCall,
-  evaluateTemplateCall,
-  evaluateMethodCall,
   type EvalCtx,
+  evaluateMethodCall,
+  evaluateTemplateCall,
+  tryEvaluateBuiltinCall,
 } from "./builtin-eval";
+import { InterpreterRuntime } from "./runtime";
 
 export type RuntimeArgument =
   | { kind: "value"; value: RuntimeValue }
@@ -40,13 +36,16 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       expectBool: (v, line) => this.expectBool(v, line),
       expectArray: (v, line) => this.expectArray(v, line),
       ensureInitialized: (v, line, what) => this.ensureInitialized(v, line, what),
-      ensureNotVoid: (v, line) => this.ensureNotVoid(v as Exclude<RuntimeValue, { kind: "uninitialized" }>, line),
+      ensureNotVoid: (v, line) =>
+        this.ensureNotVoid(v as Exclude<RuntimeValue, { kind: "uninitialized" }>, line),
       castToElementType: (v, t, line) => this.castToElementType(v, t, line),
       runtimeValueToType: (v, line) => this.runtimeValueToType(v, line),
       defaultValueForType: (t, line) => this.defaultValueForType(t, line),
       isAssignableTarget: (expr): expr is AssignTargetNode => this.isAssignableTarget(expr),
-      readAssignTarget: (target, line) => this.readLocation(this.resolveAssignTargetLocation(target, line), line),
-      writeAssignTarget: (target, value, line) => this.writeLocation(this.resolveAssignTargetLocation(target, line), value, line),
+      readAssignTarget: (target, line) =>
+        this.readLocation(this.resolveAssignTargetLocation(target, line), line),
+      writeAssignTarget: (target, value, line) =>
+        this.writeLocation(this.resolveAssignTargetLocation(target, line), value, line),
       resolveAssignTargetLocation: (target, line) => this.resolveAssignTargetLocation(target, line),
       readLocation: (loc, line) => this.readLocation(loc, line),
       writeLocation: (loc, value, line) => this.writeLocation(loc, value, line),
@@ -102,7 +101,12 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
           });
           return this.invokeFunction(fn, argValues);
         }
-        const builtinResult = tryEvaluateBuiltinCall(expr.callee, expr.args, expr.line, this.evalCtx);
+        const builtinResult = tryEvaluateBuiltinCall(
+          expr.callee,
+          expr.args,
+          expr.line,
+          this.evalCtx,
+        );
         if (builtinResult !== null) {
           return builtinResult;
         }
@@ -110,7 +114,8 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       }
       case "TemplateCallExpr":
         return evaluateTemplateCall(
-          expr, this.evalCtx,
+          expr,
+          this.evalCtx,
           (tupleExpr, index, line) => this.getTupleElementValue(tupleExpr, index, line),
           (type, args, line) => this.constructVectorValue(type, args, line),
         );
@@ -281,7 +286,11 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       const parent = this.resolveAssignTargetLocation(targetExpr as AssignTargetNode, line);
       const keyValue = this.ensureNotVoid(
         this.ensureInitialized(
-          this.assertType(targetValue.type.templateArgs[0] ?? { kind: "PrimitiveType", name: "int" }, this.evaluateExpr(indexExpr), line),
+          this.assertType(
+            targetValue.type.templateArgs[0] ?? { kind: "PrimitiveType", name: "int" },
+            this.evaluateExpr(indexExpr),
+            line,
+          ),
           line,
           "map key",
         ),
@@ -396,9 +405,12 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     }
 
     if (
-      expr.operator === "==" || expr.operator === "!=" ||
-      expr.operator === "<" || expr.operator === "<=" ||
-      expr.operator === ">" || expr.operator === ">="
+      expr.operator === "==" ||
+      expr.operator === "!=" ||
+      expr.operator === "<" ||
+      expr.operator === "<=" ||
+      expr.operator === ">" ||
+      expr.operator === ">="
     ) {
       return {
         kind: "bool",
@@ -407,19 +419,31 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     }
 
     if (
-      expr.operator === "<<" || expr.operator === ">>" ||
-      expr.operator === "&" || expr.operator === "^" || expr.operator === "|"
+      expr.operator === "<<" ||
+      expr.operator === ">>" ||
+      expr.operator === "&" ||
+      expr.operator === "^" ||
+      expr.operator === "|"
     ) {
       const leftInt = this.expectInt(left, expr.line);
       const rightInt = this.expectInt(right, expr.line);
       switch (expr.operator) {
         case "<<":
-          return { kind: "int", value: leftInt.value << this.normalizeShiftAmount(rightInt.value, expr.line) };
+          return {
+            kind: "int",
+            value: leftInt.value << this.normalizeShiftAmount(rightInt.value, expr.line),
+          };
         case ">>":
-          return { kind: "int", value: leftInt.value >> this.normalizeShiftAmount(rightInt.value, expr.line) };
-        case "&": return { kind: "int", value: leftInt.value & rightInt.value };
-        case "^": return { kind: "int", value: leftInt.value ^ rightInt.value };
-        case "|": return { kind: "int", value: leftInt.value | rightInt.value };
+          return {
+            kind: "int",
+            value: leftInt.value >> this.normalizeShiftAmount(rightInt.value, expr.line),
+          };
+        case "&":
+          return { kind: "int", value: leftInt.value & rightInt.value };
+        case "^":
+          return { kind: "int", value: leftInt.value ^ rightInt.value };
+        case "|":
+          return { kind: "int", value: leftInt.value | rightInt.value };
       }
     }
 
@@ -431,19 +455,28 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     const numeric = toNumericOperands(left, right, expr.line, this.fail.bind(this));
     if (numeric.mode === "double") {
       switch (expr.operator) {
-        case "+": return { kind: "double", value: numeric.left + numeric.right };
-        case "-": return { kind: "double", value: numeric.left - numeric.right };
-        case "*": return { kind: "double", value: numeric.left * numeric.right };
-        case "/": return { kind: "double", value: numeric.left / numeric.right };
-        case "%": return { kind: "double", value: numeric.left % numeric.right };
-        default: this.fail(`unsupported binary operator '${expr.operator}'`, expr.line);
+        case "+":
+          return { kind: "double", value: numeric.left + numeric.right };
+        case "-":
+          return { kind: "double", value: numeric.left - numeric.right };
+        case "*":
+          return { kind: "double", value: numeric.left * numeric.right };
+        case "/":
+          return { kind: "double", value: numeric.left / numeric.right };
+        case "%":
+          return { kind: "double", value: numeric.left % numeric.right };
+        default:
+          this.fail(`unsupported binary operator '${expr.operator}'`, expr.line);
       }
     }
 
     switch (expr.operator) {
-      case "+": return { kind: "int", value: numeric.left + numeric.right };
-      case "-": return { kind: "int", value: numeric.left - numeric.right };
-      case "*": return { kind: "int", value: numeric.left * numeric.right };
+      case "+":
+        return { kind: "int", value: numeric.left + numeric.right };
+      case "-":
+        return { kind: "int", value: numeric.left - numeric.right };
+      case "*":
+        return { kind: "int", value: numeric.left * numeric.right };
       case "/":
         if (numeric.right === 0n) this.fail("division by zero", expr.line);
         return { kind: "int", value: numeric.left / numeric.right };
@@ -467,12 +500,15 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     line: number,
   ): RuntimeValue | null {
     if (operator === "+") {
-      if (left.kind === "pointer" && right.kind === "int") return this.offsetPointer(left, right.value, line);
-      if (left.kind === "int" && right.kind === "pointer") return this.offsetPointer(right, left.value, line);
+      if (left.kind === "pointer" && right.kind === "int")
+        return this.offsetPointer(left, right.value, line);
+      if (left.kind === "int" && right.kind === "pointer")
+        return this.offsetPointer(right, left.value, line);
       return null;
     }
     if (operator === "-") {
-      if (left.kind === "pointer" && right.kind === "int") return this.offsetPointer(left, -right.value, line);
+      if (left.kind === "pointer" && right.kind === "int")
+        return this.offsetPointer(left, -right.value, line);
       if (left.kind === "pointer" && right.kind === "pointer") {
         return { kind: "int", value: this.diffPointers(left, right, line) };
       }
@@ -492,7 +528,12 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       return {
         kind: "pointer",
         pointeeType: pointer.pointeeType,
-        target: { kind: "array", ref: target.ref, index: target.index + Number(offset), type: target.type },
+        target: {
+          kind: "array",
+          ref: target.ref,
+          index: target.index + Number(offset),
+          type: target.type,
+        },
       };
     }
     if (target.kind === "string") {
@@ -517,7 +558,8 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     const l = left.target;
     const r = right.target;
     if (l.kind === "array" && r.kind === "array") {
-      if (l.ref !== r.ref) this.fail("pointer subtraction requires pointers into the same array", line);
+      if (l.ref !== r.ref)
+        this.fail("pointer subtraction requires pointers into the same array", line);
       return BigInt(l.index - r.index);
     }
     if (l.kind === "string" && r.kind === "string") {
@@ -557,9 +599,12 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     line: number,
   ): RuntimeValue {
     switch (operator) {
-      case "+=": return { kind: "int", value: left + right };
-      case "-=": return { kind: "int", value: left - right };
-      case "*=": return { kind: "int", value: left * right };
+      case "+=":
+        return { kind: "int", value: left + right };
+      case "-=":
+        return { kind: "int", value: left - right };
+      case "*=":
+        return { kind: "int", value: left * right };
       case "/=":
         if (right === 0n) this.fail("division by zero", line);
         return { kind: "int", value: left / right };

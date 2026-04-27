@@ -1,3 +1,13 @@
+import { isTupleGetTemplateCall } from "@/stdlib/template-exprs";
+import {
+  mapKeyType,
+  mapValueType,
+  pairFirstType,
+  pairSecondType,
+  tupleElementTypes,
+  vectorElementType,
+} from "@/stdlib/template-types";
+import type { BinaryExprNode, ExprNode, TypeNode } from "@/types";
 import {
   isArrayType,
   isMapType,
@@ -11,16 +21,6 @@ import {
   tupleType,
   typeToString,
 } from "@/types";
-import type { BinaryExprNode, ExprNode, TypeNode } from "@/types";
-import {
-  mapKeyType,
-  mapValueType,
-  pairFirstType,
-  pairSecondType,
-  tupleElementTypes,
-  vectorElementType,
-} from "@/stdlib/template-types";
-import { isTupleGetTemplateCall } from "@/stdlib/template-exprs";
 import {
   isDoubleType,
   isIntType,
@@ -36,9 +36,7 @@ export function sameType(left: TypeNode, right: TypeNode): boolean {
     return isPrimitiveType(left) && isPrimitiveType(right) && left.name === right.name;
   }
   if (isArrayType(left) || isArrayType(right)) {
-    return (
-      isArrayType(left) && isArrayType(right) && sameType(left.elementType, right.elementType)
-    );
+    return isArrayType(left) && isArrayType(right) && sameType(left.elementType, right.elementType);
   }
   if (isVectorType(left) || isVectorType(right)) {
     return (
@@ -78,9 +76,7 @@ export function sameType(left: TypeNode, right: TypeNode): boolean {
   }
   if (isPointerType(left) || isPointerType(right)) {
     return (
-      isPointerType(left) &&
-      isPointerType(right) &&
-      sameType(left.pointeeType, right.pointeeType)
+      isPointerType(left) && isPointerType(right) && sameType(left.pointeeType, right.pointeeType)
     );
   }
   if (isReferenceType(left) || isReferenceType(right)) {
@@ -279,10 +275,18 @@ export function resolveConditionalType(
 
   if (isPairType(thenType) && isPairType(elseType)) {
     const first = resolveConditionalType(
-      pairFirstType(thenType), pairFirstType(elseType), line, col, pushError,
+      pairFirstType(thenType),
+      pairFirstType(elseType),
+      line,
+      col,
+      pushError,
     );
     const second = resolveConditionalType(
-      pairSecondType(thenType), pairSecondType(elseType), line, col, pushError,
+      pairSecondType(thenType),
+      pairSecondType(elseType),
+      line,
+      col,
+      pushError,
     );
     if (first === null || second === null) {
       return null;
@@ -295,7 +299,8 @@ export function resolveConditionalType(
     const elseEls = tupleElementTypes(elseType);
     if (thenEls.length !== elseEls.length) {
       pushError(
-        line, col,
+        line,
+        col,
         `incompatible operand types for ?: '${typeToString(thenType)}' and '${typeToString(elseType)}'`,
       );
       return null;
@@ -338,7 +343,8 @@ export function resolveConditionalType(
   }
 
   pushError(
-    line, col,
+    line,
+    col,
     `incompatible operand types for ?: '${typeToString(thenType)}' and '${typeToString(elseType)}'`,
   );
   return null;

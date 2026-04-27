@@ -1,1 +1,7 @@
-export { compareValues, compareSortableValues, sameLocation, toNumericOperands, isNumericRuntimeValue } from "./compare";
+export {
+  compareSortableValues,
+  compareValues,
+  isNumericRuntimeValue,
+  sameLocation,
+  toNumericOperands,
+} from "./compare";

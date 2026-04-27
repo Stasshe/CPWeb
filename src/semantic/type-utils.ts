@@ -1,4 +1,13 @@
 import {
+  mapKeyType,
+  mapValueType,
+  pairFirstType,
+  pairSecondType,
+  tupleElementTypes,
+  vectorElementType,
+} from "@/stdlib/template-types";
+import type { ExprNode, TypeNode } from "@/types";
+import {
   isArrayType,
   isMapType,
   isPairType,
@@ -8,15 +17,6 @@ import {
   isTupleType,
   isVectorType,
 } from "@/types";
-import type { ExprNode, TypeNode } from "@/types";
-import {
-  mapKeyType,
-  mapValueType,
-  pairFirstType,
-  pairSecondType,
-  tupleElementTypes,
-  vectorElementType,
-} from "@/stdlib/template-types";
 
 export function isIntType(type: TypeNode): boolean {
   return (
@@ -87,15 +87,11 @@ export function containsReferenceNested(type: TypeNode): boolean {
   }
   if (isPairType(type)) {
     return (
-      containsReferenceNested(pairFirstType(type)) ||
-      containsReferenceNested(pairSecondType(type))
+      containsReferenceNested(pairFirstType(type)) || containsReferenceNested(pairSecondType(type))
     );
   }
   if (isMapType(type)) {
-    return (
-      containsReferenceNested(mapKeyType(type)) ||
-      containsReferenceNested(mapValueType(type))
-    );
+    return containsReferenceNested(mapKeyType(type)) || containsReferenceNested(mapValueType(type));
   }
   if (isTupleType(type)) {
     return tupleElementTypes(type).some((t) => containsReferenceNested(t));

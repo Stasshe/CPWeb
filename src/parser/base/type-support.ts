@@ -7,16 +7,14 @@ import {
   tupleElementTypes,
   vectorElementType,
 } from "@/stdlib/template-types";
-import type {
-  ArrayDeclNode,
-  PrimitiveTypeNode,
-  Token,
-  TypeNode,
-  VectorDeclNode,
-} from "@/types";
+import type { ArrayDeclNode, PrimitiveTypeNode, Token, TypeNode, VectorDeclNode } from "@/types";
 import {
   arrayType,
+  isMapType,
+  isPairType,
   isPrimitiveType,
+  isTupleType,
+  isVectorType,
   mapType,
   pairType,
   pointerType,
@@ -24,10 +22,6 @@ import {
   referenceType,
   tupleType,
   vectorType,
-  isMapType,
-  isPairType,
-  isTupleType,
-  isVectorType,
 } from "@/types";
 import { BaseParserCore } from "./core";
 
@@ -36,10 +30,7 @@ const TYPE_KEYWORDS = new Set<string>(["int", "long", "double", "bool", "char", 
 export abstract class BaseParserTypeSupport extends BaseParserCore {
   private isTemplateTypeToken(name: "vector" | "map" | "pair" | "tuple"): boolean {
     const token = this.peek();
-    return (
-      (token.kind === "identifier" || token.kind === "keyword") &&
-      token.text === name
-    );
+    return (token.kind === "identifier" || token.kind === "keyword") && token.text === name;
   }
 
   protected parseType(): TypeNode | null {
@@ -90,10 +81,7 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
   }
 
   protected override checkTypeStart(): boolean {
-    return (
-      this.peekPrimitiveTypeKeyword() ||
-      this.peekSupportedTemplateTypeName() !== null
-    );
+    return this.peekPrimitiveTypeKeyword() || this.peekSupportedTemplateTypeName() !== null;
   }
 
   protected wrapArrayDimensions(type: TypeNode, dimensions: number): ArrayDeclNode["type"] {
@@ -124,7 +112,9 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
       return tupleElementTypes(type).some((elementType) => this.isVoidTypeNode(elementType));
     }
     if (type.kind === "ArrayType" || isVectorType(type)) {
-      return this.isVoidTypeNode(type.kind === "ArrayType" ? type.elementType : vectorElementType(type));
+      return this.isVoidTypeNode(
+        type.kind === "ArrayType" ? type.elementType : vectorElementType(type),
+      );
     }
     this.errorAtCurrent("unsupported template type in void check");
     return false;
@@ -182,11 +172,7 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
       token.kind === "identifier" || token.kind === "keyword"
         ? getSupportedTemplateTypeSpec(token.text)
         : null;
-    if (
-      spec !== null &&
-      next?.kind === "symbol" &&
-      next.text === "<"
-    ) {
+    if (spec !== null && next?.kind === "symbol" && next.text === "<") {
       return spec.name;
     }
     return null;
