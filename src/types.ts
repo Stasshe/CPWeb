@@ -229,9 +229,9 @@ export type ExprNode =
   | UnaryExprNode
   | AddressOfExprNode
   | DerefExprNode
-  | VectorCtorExprNode
   | CallExprNode
-  | TupleGetExprNode
+  | TemplateIdExprNode
+  | TemplateCallExprNode
   | MethodCallExprNode
   | IndexExprNode
   | IdentifierExprNode
@@ -241,7 +241,7 @@ export type AssignTargetNode =
   | IdentifierExprNode
   | IndexExprNode
   | DerefExprNode
-  | TupleGetExprNode;
+  | TemplateCallExprNode;
 
 export type AssignExprNode = NodeBase & {
   kind: "AssignExpr";
@@ -300,10 +300,22 @@ export type DerefExprNode = NodeBase & {
   pointer: ExprNode;
 };
 
-export type VectorCtorExprNode = NodeBase & {
-  kind: "VectorCtorExpr";
-  type: VectorTypeNode;
-  args: ExprNode[];
+export type TypeTemplateArgNode = {
+  kind: "TypeTemplateArg";
+  type: TypeNode;
+};
+
+export type IntTemplateArgNode = {
+  kind: "IntTemplateArg";
+  value: number;
+};
+
+export type TemplateArgNode = TypeTemplateArgNode | IntTemplateArgNode;
+
+export type TemplateIdExprNode = NodeBase & {
+  kind: "TemplateIdExpr";
+  template: string;
+  templateArgs: TemplateArgNode[];
 };
 
 export type CallExprNode = NodeBase & {
@@ -312,10 +324,10 @@ export type CallExprNode = NodeBase & {
   args: ExprNode[];
 };
 
-export type TupleGetExprNode = NodeBase & {
-  kind: "TupleGetExpr";
-  tuple: ExprNode;
-  index: number;
+export type TemplateCallExprNode = NodeBase & {
+  kind: "TemplateCallExpr";
+  callee: TemplateIdExprNode;
+  args: ExprNode[];
 };
 
 export type MethodCallExprNode = NodeBase & {

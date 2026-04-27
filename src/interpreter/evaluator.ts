@@ -2,6 +2,7 @@ import {
   describeBuiltinArity,
   getBuiltinFreeFunctionSpec,
   getBuiltinTemplateComparatorSpec,
+  getSupportedTemplateTypeSpec,
 } from "@/stdlib/registry";
 import {
   mapKeyType,
@@ -9,6 +10,12 @@ import {
   tupleElementTypes,
   vectorElementType,
 } from "@/stdlib/template-types";
+import {
+  getSingleIntTemplateArg,
+  getSingleTypeTemplateArg,
+  isTemplateNamed,
+  isTupleGetTemplateCall,
+} from "@/stdlib/template-exprs";
 import type { RuntimeLocation, RuntimeValue } from "@/runtime/value";
 import type {
   AssignTargetNode,
@@ -17,7 +24,7 @@ import type {
   FunctionDeclNode,
   VectorTypeNode,
 } from "@/types";
-import { isReferenceType, isVectorType, pairType, tupleType } from "@/types";
+import { isReferenceType, isVectorType, pairType, tupleType, vectorType } from "@/types";
 import { InterpreterRuntime } from "./runtime";
 
 export type RuntimeArgument =
@@ -48,6 +55,8 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
           return { kind: "string", value: "\n" };
         }
         return this.resolve(expr.name, expr.line);
+      case "TemplateIdExpr":
+        return this.fail(`'${expr.template}' was not declared in this scope`, expr.line);
       case "AddressOfExpr": {
         const location = this.resolveAssignTargetLocation(expr.target, expr.line);
         return {
@@ -60,10 +69,6 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       case "DerefExpr": {
         const location = this.resolvePointerLocation(expr.pointer, expr.line);
         return this.readLocation(location, expr.line);
-      }
-      case "VectorCtorExpr": {
-        const args = expr.args.map((arg) => this.evaluateExpr(arg));
-        return this.constructVectorValue(expr.type, args, expr.line);
       }
       case "CallExpr": {
         const fn = this.functions.get(expr.callee);
@@ -90,12 +95,12 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         }
         return this.fail(`'${expr.callee}' was not declared in this scope`, expr.line);
       }
+      case "TemplateCallExpr":
+        return this.evaluateTemplateCall(expr);
       case "MethodCallExpr":
         return this.evaluateMethodCall(expr.receiver, expr.method, expr.args, expr.line);
       case "IndexExpr":
         return this.getIndexedValue(expr.target, expr.index, expr.line);
-      case "TupleGetExpr":
-        return this.getTupleElementValue(expr.tuple, expr.index, expr.line);
       case "ConditionalExpr": {
         const condition = this.evaluateExpr(expr.condition);
         const selected = this.evaluateCondition(condition, expr.condition.line)
@@ -193,8 +198,8 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         return this.resolveIndexedLocation(target.target, target.index, line);
       case "DerefExpr":
         return this.resolvePointerLocation(target.pointer, line);
-      case "TupleGetExpr":
-        return this.resolveTupleElementLocation(target.tuple, target.index, line);
+      case "TemplateCallExpr":
+        return this.resolveTemplateCallLocation(target, line);
     }
   }
 
@@ -203,8 +208,52 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       expr.kind === "Identifier" ||
       expr.kind === "IndexExpr" ||
       expr.kind === "DerefExpr" ||
-      expr.kind === "TupleGetExpr"
+      isTupleGetTemplateCall(expr)
     );
+  }
+
+  private evaluateTemplateCall(expr: Extract<ExprNode, { kind: "TemplateCallExpr" }>): RuntimeValue {
+    if (isTemplateNamed(expr.callee, "get")) {
+      const index = getSingleIntTemplateArg(expr.callee);
+      if (index === null) {
+        this.fail("get requires a single non-negative integer template argument", expr.line);
+      }
+      const tupleExpr = expr.args[0];
+      if (tupleExpr === undefined || expr.args.length !== 1) {
+        this.fail("get requires exactly 1 argument", expr.line);
+      }
+      return this.getTupleElementValue(tupleExpr, index, expr.line);
+    }
+
+    if (getBuiltinTemplateComparatorSpec(expr.callee.template) !== null) {
+      return this.fail(`'${expr.callee.template}' was not declared in this scope`, expr.line);
+    }
+
+    if (getSupportedTemplateTypeSpec(expr.callee.template) !== null && expr.callee.template === "vector") {
+      const elementType = getSingleTypeTemplateArg(expr.callee);
+      if (elementType === null) {
+        this.fail("vector constructor requires exactly 1 type argument", expr.line);
+      }
+      const args = expr.args.map((arg) => this.evaluateExpr(arg));
+      return this.constructVectorValue(vectorType(elementType), args, expr.line);
+    }
+
+    return this.fail(`unsupported template call '${expr.callee.template}'`, expr.line);
+  }
+
+  private resolveTemplateCallLocation(
+    expr: Extract<ExprNode, { kind: "TemplateCallExpr" }>,
+    line: number,
+  ): RuntimeLocation {
+    if (isTemplateNamed(expr.callee, "get")) {
+      const index = getSingleIntTemplateArg(expr.callee);
+      const tupleExpr = expr.args[0];
+      if (index === null || tupleExpr === undefined || expr.args.length !== 1) {
+        this.fail("get requires exactly 1 integer template argument and 1 value argument", line);
+      }
+      return this.resolveTupleElementLocation(tupleExpr, index, line);
+    }
+    this.fail("template call is not assignable", line);
   }
 
   private resolvePointerLocation(pointerExpr: ExprNode, line: number): RuntimeLocation {
@@ -960,9 +1009,9 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       return false;
     }
     if (
-      expr.kind === "CallExpr" &&
+      expr.kind === "TemplateCallExpr" &&
       expr.args.length === 0 &&
-      getBuiltinTemplateComparatorSpec(expr.callee) !== null
+      getBuiltinTemplateComparatorSpec(expr.callee.template) !== null
     ) {
       return true;
     }
@@ -1209,6 +1258,10 @@ function sameReceiver(left: ExprNode, right: ExprNode): boolean {
       return false;
     case "CallExpr":
       return false;
+    case "TemplateIdExpr":
+      return false;
+    case "TemplateCallExpr":
+      return false;
     case "MethodCallExpr":
       return false;
     case "UnaryExpr":
@@ -1218,10 +1271,6 @@ function sameReceiver(left: ExprNode, right: ExprNode): boolean {
     case "AssignExpr":
       return false;
     case "ConditionalExpr":
-      return false;
-    case "VectorCtorExpr":
-      return false;
-    case "TupleGetExpr":
       return false;
     case "AddressOfExpr":
       return false;

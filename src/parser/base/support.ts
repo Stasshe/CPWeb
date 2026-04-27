@@ -1,3 +1,4 @@
+import { isTupleGetTemplateCall } from "@/stdlib/template-exprs";
 import { getUnsupportedTemplateTypeSpec } from "@/stdlib/registry";
 import type {
   ArrayDeclNode,
@@ -387,6 +388,6 @@ export function isAssignTarget(expr: ExprNode): expr is AssignTargetNode {
     expr.kind === "Identifier" ||
     expr.kind === "IndexExpr" ||
     expr.kind === "DerefExpr" ||
-    expr.kind === "TupleGetExpr"
+    isTupleGetTemplateCall(expr)
   );
 }

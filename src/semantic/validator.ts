@@ -2,6 +2,7 @@ import {
   describeBuiltinArity,
   getBuiltinFreeFunctionSpec,
   getBuiltinTemplateComparatorSpec,
+  getSupportedTemplateTypeSpec,
 } from "@/stdlib/registry";
 import {
   mapKeyType,
@@ -11,6 +12,15 @@ import {
   tupleElementTypes,
   vectorElementType,
 } from "@/stdlib/template-types";
+import {
+  getSingleIntTemplateArg,
+  getSingleTypeTemplateArg,
+  isTemplateNamed,
+  isTupleGetTemplateCall,
+} from "@/stdlib/template-exprs";
+import {
+  vectorType,
+} from "@/types";
 import type {
   CompileError,
   ExprNode,
@@ -458,18 +468,12 @@ function inferExprType(expr: ExprNode, context: ValidationContext): TypeNode | n
       }
       return pointerType.pointeeType;
     }
-    case "VectorCtorExpr": {
-      if (expr.args.length >= 1) {
-        validateExpr(expr.args[0] ?? null, context, "int");
+    case "TemplateIdExpr":
+      if (getBuiltinTemplateComparatorSpec(expr.template) !== null) {
+        return null;
       }
-      if (expr.args.length >= 2) {
-        validateExpr(expr.args[1] ?? null, context, vectorElementType(expr.type));
-      }
-      if (expr.args.length > 2) {
-        pushError(context, expr.line, expr.col, "too many arguments for vector constructor");
-      }
-      return expr.type;
-    }
+      pushError(context, expr.line, expr.col, `'${typeToString({ kind: "NamedType", name: expr.template })}' does not name a value`);
+      return null;
     case "AssignExpr": {
       const targetType = inferLValueType(expr.target, context);
       let valueType: TypeNode | null;
@@ -546,28 +550,8 @@ function inferExprType(expr: ExprNode, context: ValidationContext): TypeNode | n
     }
     case "CallExpr":
       return validateCall(expr.callee, expr.args, expr.line, expr.col, context);
-    case "TupleGetExpr": {
-      const tupleType = inferExprType(expr.tuple, context);
-      if (tupleType === null) {
-        return null;
-      }
-      if (!isTupleType(tupleType)) {
-        pushError(context, expr.line, expr.col, "type mismatch: expected tuple");
-        return null;
-      }
-      const elementTypes = tupleElementTypes(tupleType);
-      const elementType = elementTypes[expr.index];
-      if (elementType === undefined) {
-        pushError(
-          context,
-          expr.line,
-          expr.col,
-          `tuple index ${expr.index.toString()} out of range for tuple of size ${elementTypes.length}`,
-        );
-        return null;
-      }
-      return elementType;
-    }
+    case "TemplateCallExpr":
+      return validateTemplateCall(expr, context);
     case "MethodCallExpr":
       return validateMethodCall(
         expr.receiver,
@@ -578,6 +562,71 @@ function inferExprType(expr: ExprNode, context: ValidationContext): TypeNode | n
         context,
       );
   }
+}
+
+function validateTemplateCall(expr: Extract<ExprNode, { kind: "TemplateCallExpr" }>, context: ValidationContext): TypeNode | null {
+  if (isTemplateNamed(expr.callee, "get")) {
+    const index = getSingleIntTemplateArg(expr.callee);
+    if (index === null) {
+      pushError(context, expr.line, expr.col, "get requires a single non-negative integer template argument");
+      return null;
+    }
+    const tupleExpr = expr.args[0];
+    const tupleType = tupleExpr === undefined ? null : inferExprType(tupleExpr, context);
+    if (expr.args.length !== 1) {
+      pushError(context, expr.line, expr.col, "get requires exactly 1 argument");
+    }
+    if (tupleType === null) {
+      return null;
+    }
+    if (!isTupleType(tupleType)) {
+      pushError(context, expr.line, expr.col, "type mismatch: expected tuple");
+      return null;
+    }
+    const elementTypes = tupleElementTypes(tupleType);
+    const elementType = elementTypes[index];
+    if (elementType === undefined) {
+      pushError(
+        context,
+        expr.line,
+        expr.col,
+        `tuple index ${index.toString()} out of range for tuple of size ${elementTypes.length}`,
+      );
+      return null;
+    }
+    return elementType;
+  }
+
+  if (getBuiltinTemplateComparatorSpec(expr.callee.template) !== null) {
+    return null;
+  }
+
+  if (getSupportedTemplateTypeSpec(expr.callee.template) !== null) {
+    if (expr.callee.template === "vector") {
+      const elementType = getSingleTypeTemplateArg(expr.callee);
+      if (elementType === null) {
+        pushError(context, expr.line, expr.col, "vector constructor requires exactly 1 type argument");
+        return null;
+      }
+      const vectorResult = vectorType(elementType);
+      if (expr.args.length >= 1) {
+        validateExpr(expr.args[0] ?? null, context, "int");
+      }
+      if (expr.args.length >= 2) {
+        validateExpr(expr.args[1] ?? null, context, vectorElementType(vectorResult));
+      }
+      if (expr.args.length > 2) {
+        pushError(context, expr.line, expr.col, "too many arguments for vector constructor");
+      }
+      return vectorResult;
+    }
+  }
+
+  pushError(context, expr.line, expr.col, `unsupported template call '${expr.callee.template}'`);
+  for (const arg of expr.args) {
+    validateExpr(arg, context);
+  }
+  return null;
 }
 
 function inferBinaryType(
@@ -887,8 +936,8 @@ function validateRangeBuiltin(
   } else if (builtin.name === "sort" && args[2] !== undefined) {
     const comparator = args[2];
     if (
-      !(comparator.kind === "CallExpr" &&
-        getBuiltinTemplateComparatorSpec(comparator.callee) !== null &&
+      !(comparator.kind === "TemplateCallExpr" &&
+        getBuiltinTemplateComparatorSpec(comparator.callee.template) !== null &&
         comparator.args.length === 0)
     ) {
       pushError(context, comparator.line, comparator.col, "unsupported sort comparator");
@@ -1286,7 +1335,7 @@ function isAssignableExpr(expr: ExprNode): boolean {
     expr.kind === "Identifier" ||
     expr.kind === "IndexExpr" ||
     expr.kind === "DerefExpr" ||
-    expr.kind === "TupleGetExpr"
+    isTupleGetTemplateCall(expr)
   );
 }
 
