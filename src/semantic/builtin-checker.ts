@@ -1,12 +1,10 @@
-import { checkMakePair, checkMakeTuple } from "@/stdlib/check/factories";
-import { checkTupleGet } from "@/stdlib/check/get";
-import { checkMapMethod, checkPairMethod } from "@/stdlib/check/methods";
-import { checkFill, checkReverse, checkSort } from "@/stdlib/check/range-algorithms";
-import { checkAbs, checkMax, checkMin, checkSwap } from "@/stdlib/check/value-functions";
-import { checkVectorConstructor, checkVectorMethod } from "@/stdlib/check/vector";
-import type { CheckCtx } from "@/stdlib/check-context";
-import { getBuiltinFreeFunctionSpec, getBuiltinTemplateComparatorSpec } from "@/stdlib/registry";
-import { isTemplateNamed } from "@/stdlib/template-exprs";
+import {
+  dispatchFreeCall,
+  dispatchMethodCall,
+  dispatchTemplateCall,
+  type CheckCtx,
+} from "@/stdlib/check";
+import { getBuiltinTemplateComparatorSpec } from "@/stdlib/registry";
 import type {
   CompileError,
   ExprNode,
@@ -15,7 +13,6 @@ import type {
   TemplateFunctionDeclNode,
   TypeNode,
 } from "@/types";
-import { isMapType, isPairType, isVectorType } from "@/types";
 import { inferTypeArgs, instantiateFunction, instantiationKey } from "./template-instantiator";
 import { isAssignable, isAssignableExpr } from "./type-compat";
 
@@ -60,46 +57,9 @@ export function validateBuiltinCall(
   validateExpr: ValidateExprFn,
   inferExprType: InferExprTypeFn,
 ): TypeNode | null | undefined {
-  const builtin = getBuiltinFreeFunctionSpec(callee);
-  if (builtin === null) return undefined;
-
   const ctx = makeCheckCtx(context, validateExpr, inferExprType);
-
-  if (builtin.kind === "value_function") {
-    switch (builtin.name) {
-      case "abs":
-        return checkAbs(args, line, col, ctx);
-      case "max":
-        return checkMax(args, line, col, ctx);
-      case "min":
-        return checkMin(args, line, col, ctx);
-      case "swap":
-        return checkSwap(args, line, col, ctx);
-    }
-  }
-  if (builtin.kind === "template_factory") {
-    switch (builtin.name) {
-      case "make_pair":
-        return checkMakePair(args, line, col, ctx);
-      case "make_tuple":
-        return checkMakeTuple(args, line, col, ctx);
-    }
-  }
-  if (builtin.kind === "range_algorithm") {
-    switch (builtin.name) {
-      case "sort":
-        return checkSort(args, line, col, ctx);
-      case "reverse":
-        return checkReverse(args, line, col, ctx);
-      case "fill":
-        return checkFill(args, line, col, ctx);
-    }
-  }
-  if (builtin.kind === "template_comparator") {
-    context.errors.push({ line, col, message: `'${builtin.name}' was not declared in this scope` });
-    return null;
-  }
-  return undefined;
+  const result = dispatchFreeCall(callee, args, line, col, ctx);
+  return result === "not_registered" ? undefined : result;
 }
 
 export function validateTemplateCall(
@@ -110,11 +70,10 @@ export function validateTemplateCall(
 ): TypeNode | null {
   const ctx = makeCheckCtx(context, validateExpr, inferExprType);
 
-  if (isTemplateNamed(expr.callee, "get")) return checkTupleGet(expr, ctx);
-
   if (getBuiltinTemplateComparatorSpec(expr.callee.template) !== null) return null;
 
-  if (isTemplateNamed(expr.callee, "vector")) return checkVectorConstructor(expr, ctx);
+  const result = dispatchTemplateCall(expr, ctx);
+  if (result !== "not_registered") return result;
 
   context.errors.push({
     line: expr.line,
@@ -142,17 +101,13 @@ export function validateMethodCall(
   }
 
   const ctx = makeCheckCtx(context, validateExpr, inferExprType);
-
-  if (isPairType(receiverType)) return checkPairMethod(receiverType, method, args, line, col, ctx);
-  if (isMapType(receiverType)) return checkMapMethod(receiverType, method, args, line, col, ctx);
-
-  if (!isVectorType(receiverType)) {
+  const result = dispatchMethodCall(receiverType, method, args, line, col, ctx);
+  if (result === "not_matched") {
     context.errors.push({ line, col, message: "type mismatch: expected array/vector/pair/map" });
     for (const arg of args) validateExpr(arg, context);
     return null;
   }
-
-  return checkVectorMethod(receiverType, method, args, line, col, ctx);
+  return result;
 }
 
 export function validateTemplateFunctionCall(

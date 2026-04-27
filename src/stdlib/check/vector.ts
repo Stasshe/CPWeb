@@ -1,4 +1,5 @@
 import type { CheckCtx } from "@/stdlib/check-context";
+import { registerMethodHandler, registerTemplateCall } from "@/stdlib/check-registry";
 import { getSingleTypeTemplateArg } from "@/stdlib/template-exprs";
 import { vectorElementType } from "@/stdlib/template-types";
 import { describeVectorMethodArgs, getVectorMethodSpec } from "@/stdlib/vector-methods";
@@ -66,3 +67,11 @@ export function checkVectorMethod(
       return vectorElementType(receiverType);
   }
 }
+
+registerTemplateCall("vector", checkVectorConstructor);
+
+registerMethodHandler({
+  matches: isVectorType,
+  handle: (receiverType, method, args, line, col, ctx) =>
+    checkVectorMethod(receiverType, method, args, line, col, ctx),
+});

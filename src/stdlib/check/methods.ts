@@ -1,4 +1,5 @@
 import type { CheckCtx } from "@/stdlib/check-context";
+import { registerMethodHandler } from "@/stdlib/check-registry";
 import { getMapMethodSpec } from "@/stdlib/map-methods";
 import { pairFirstType, pairSecondType } from "@/stdlib/template-types";
 import type { ExprNode, TypeNode } from "@/types";
@@ -42,3 +43,15 @@ export function checkMapMethod(
   }
   return { kind: "PrimitiveType", name: "int" };
 }
+
+registerMethodHandler({
+  matches: isPairType,
+  handle: (receiverType, method, args, line, col, ctx) =>
+    checkPairMethod(receiverType, method, args, line, col, ctx),
+});
+
+registerMethodHandler({
+  matches: isMapType,
+  handle: (receiverType, method, args, line, col, ctx) =>
+    checkMapMethod(receiverType, method, args, line, col, ctx),
+});

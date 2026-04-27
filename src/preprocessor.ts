@@ -17,7 +17,8 @@ type MacroDefinition = ObjectMacro | FunctionMacro;
 
 type PreprocessResult = { ok: true; source: string } | { ok: false; errors: CompileError[] };
 
-const INCLUDE_PATTERN = /^\s*#\s*include\s*<(bits\/stdc\+\+\.h|iostream|vector|map)>\s*$/;
+const INCLUDE_PATTERN =
+  /^\s*#\s*include\s*<(bits\/stdc\+\+\.h|algorithm|functional|iostream|map|tuple|utility|vector)>\s*$/;
 const DEFINE_PATTERN = /^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)(\(([^)]*)\))?\s*(.*)$/;
 const USING_ALIAS_PATTERN = /^\s*using\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*;\s*$/;
 const CONST_DECL_PATTERN =
@@ -225,7 +226,10 @@ function normalizeCompatibilitySyntax(line: string): string {
 }
 
 function stripConstKeyword(line: string): string {
-  return line.replace(/^\s*const\s+(?=(int|long\s+long|double|bool|char|string|vector)\b)/, "");
+  return line.replace(
+    /^\s*const\s+(?=(int|long\s+long|double|bool|char|string|vector|map|pair|tuple)\b)/,
+    "",
+  );
 }
 
 function normalizeCinCommaStatement(line: string): string {
