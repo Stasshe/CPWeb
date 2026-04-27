@@ -12,7 +12,7 @@ import type {
   RuntimeErrorInfo,
   StatementNode,
 } from "@/types";
-import { pairType } from "@/types";
+import { isVectorType, pairType } from "@/types";
 import type { RuntimeArgument } from "./evaluator";
 import { InterpreterEvaluator } from "./evaluator";
 import { buildDebugInfoView, type InterpreterOptions, PauseTrap, toRuntimeError } from "./runtime";
@@ -386,6 +386,17 @@ class Interpreter extends InterpreterEvaluator {
     line: number,
   ): Array<Extract<RuntimeValue, { kind: "reference" }>> {
     const value = this.ensureInitialized(this.evaluateExpr(source), line, "value");
+    if (value.kind === "array" && isVectorType(value.type)) {
+      const store = this.arrays.get(value.ref);
+      if (store === undefined) {
+        this.fail("invalid array reference", line);
+      }
+      return store.values.map((_entry, index) => ({
+        kind: "reference",
+        type: { kind: "ReferenceType", referredType: store.type.elementType },
+        target: { kind: "array", ref: value.ref, index, type: store.type.elementType },
+      }));
+    }
     if (value.kind === "array") {
       const store = this.arrays.get(value.ref);
       if (store === undefined) {

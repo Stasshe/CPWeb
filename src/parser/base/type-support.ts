@@ -26,6 +26,14 @@ import { BaseParserCore } from "./core";
 const TYPE_KEYWORDS = new Set<string>(["int", "long", "double", "bool", "char", "string", "void"]);
 
 export abstract class BaseParserTypeSupport extends BaseParserCore {
+  private isTemplateTypeToken(name: "vector" | "map" | "pair" | "tuple"): boolean {
+    const token = this.peek();
+    return (
+      (token.kind === "identifier" || token.kind === "keyword") &&
+      token.text === name
+    );
+  }
+
   protected parseType(): TypeNode | null {
     const templateTypeName = this.peekSupportedTemplateTypeName();
     if (templateTypeName !== null) {
@@ -184,7 +192,7 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
     const token = this.peek();
     const next = this.tokens[this.index + 1];
     if (
-      token.kind === "identifier" &&
+      (token.kind === "identifier" || token.kind === "keyword") &&
       isSupportedTemplateTypeName(token.text) &&
       next?.kind === "symbol" &&
       next.text === "<"
@@ -208,7 +216,7 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
   }
 
   protected parsePairType(): TypeNode | null {
-    if (!(this.peek().kind === "identifier" && this.peek().text === "pair")) {
+    if (!this.isTemplateTypeToken("pair")) {
       this.errorAtCurrent("expected 'pair'");
       return null;
     }
@@ -238,7 +246,7 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
   }
 
   protected parseMapType(): TypeNode | null {
-    if (!(this.peek().kind === "identifier" && this.peek().text === "map")) {
+    if (!this.isTemplateTypeToken("map")) {
       this.errorAtCurrent("expected 'map'");
       return null;
     }
@@ -268,7 +276,7 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
   }
 
   protected parseTupleType(): TypeNode | null {
-    if (!(this.peek().kind === "identifier" && this.peek().text === "tuple")) {
+    if (!this.isTemplateTypeToken("tuple")) {
       this.errorAtCurrent("expected 'tuple'");
       return null;
     }
