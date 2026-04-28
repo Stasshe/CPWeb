@@ -19,7 +19,7 @@ index.ts → すべて
 | ファイル | 責務 |
 |---|---|
 | `validator.ts` | AST 全体の型検査・エラー収集。メインエントリ |
-| `builtin-checker.ts` | 組み込み関数・テンプレート呼び出し・メソッド呼び出しの型検査 |
+| `builtin-checker.ts` | 組み込み関数・テンプレート呼び出し・メソッド/メンバー呼び出しの型検査 |
 | `template-instantiator.ts` | 関数テンプレートの型引数推論・単相化 |
 | `type-compat.ts` | 型の互換性判定（`sameType`, `isAssignable`, `inferBinaryType` 等） |
 | `type-utils.ts` | 型プレディケート純関数（`isIntType`, `containsVoid` 等） |
@@ -44,7 +44,7 @@ validateBuiltinCall(callee, args, line, col, context, validateExpr, inferExprTyp
 | ファイル | 責務 |
 |---|---|
 | `evaluator.ts` | 式・文の評価メインロジック |
-| `builtin-eval.ts` | 組み込み関数・テンプレート・メソッド呼び出しの評価 |
+| `builtin-eval.ts` | 組み込み関数・テンプレート・メソッド/メンバー呼び出しの評価 |
 | `runtime/` | ランタイム支援（変数スコープ・型変換・デフォルト値等） |
 
 ### EvalCtx パターン
@@ -69,9 +69,9 @@ export interface EvalCtx {
 |---|---|
 | `metadata.ts` | 組み込み関数・テンプレート型・template 風 builtin の metadata 登録・検索 |
 | `template-exprs.ts` | テンプレート式ユーティリティ（`isTemplateNamed`, `getSingleTypeTemplateArg` 等） |
-| `template-types.ts` | テンプレート型アクセサ（`vectorElementType`, `mapKeyType` 等） |
-| `check-registry.ts` / `eval-registry.ts` | stdlib handler の登録・ディスパッチ |
-| `vector-methods.ts` / `map-methods.ts` | コンテナメソッド metadata |
+| `template-types.ts` | テンプレート型アクセサ（`vectorElementType`, `iteratorContainerType` 等） |
+| `check-registry.ts` / `eval-registry.ts` | stdlib handler の登録・ディスパッチ（free/template/method/member） |
+| `vector-methods.ts` / `map-methods.ts` / `pair-members.ts` | コンテナ metadata |
 | `builtins/compare.ts` | 値比較純関数（評価器文脈不要） |
 | `eval-context.ts` | `EvalCtx` インターフェース定義（stdlib eval 関数が受け取る評価器コンテキスト） |
 | `check-context.ts` | `CheckCtx` インターフェース定義（stdlib check 関数が受け取る型検査コンテキスト） |
@@ -79,13 +79,13 @@ export interface EvalCtx {
 | `eval/factories.ts` | make_pair / make_tuple の評価実装 |
 | `eval/vector.ts` | vector コンストラクタ・全メソッドの評価実装 |
 | `eval/get.ts` | get<N> の評価実装 |
-| `eval/pair-map.ts` | pair first/second・map.size の評価実装 |
+| `eval/pair-map.ts` | pair member / map.size の評価実装 |
 | `eval/range-algorithms.ts` | sort / reverse / fill の評価実装 |
 | `check/value-functions.ts` | abs / max / min / swap の型検査実装 |
 | `check/factories.ts` | make_pair / make_tuple の型検査実装 |
 | `check/vector.ts` | vector コンストラクタ・全メソッドの型検査実装 |
 | `check/get.ts` | get<N> の型検査実装 |
-| `check/methods.ts` | pair / map メソッドの型検査実装 |
+| `check/methods.ts` | pair member / map メソッドの型検査実装 |
 | `check/range-algorithms.ts` | sort / reverse / fill の型検査実装 |
 
 ### stdlib の位置づけ（core 直書き解消後の現状）
@@ -98,8 +98,9 @@ export interface EvalCtx {
 補足:
 
 - 上の「コア」は `semantic/` と `interpreter/` の中核を指す
-- stdlib handler 内にはまだ `pair.first` / `pair.second` / `map.size()` や range algorithm の AST 形判定など、完全 template 化前の意図的特例が残る
-- `vector.begin/end` は `vector-methods.ts` の metadata で管理し、checker/evaluator の専用分岐は削減済み
+- `pair.first` / `pair.second` は member registry、`map.size()` は method registry、`get<I>` は template-call registry で扱う
+- `vector.begin/end` は metadata に従って内部 iterator を返し、range algorithm はその iterator を受け取る
+- core 側は `stdlib/*-registry.ts` への dispatch に徹し、std::風 API 名への直書き依存を持たない
 
 ### EvalCtx パターン（stdlib 版）
 

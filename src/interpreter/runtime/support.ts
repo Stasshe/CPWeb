@@ -147,6 +147,9 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
     if (current.kind === "tuple") {
       return this.assertType(current.type, value, line);
     }
+    if (current.kind === "iterator") {
+      return this.assertType(current.type, value, line);
+    }
     if (current.kind === "void") {
       this.fail("cannot assign to void", line);
     }
@@ -275,6 +278,14 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
           ? this.readLocation(entry.value.target, line)
           : entry.value;
       }
+      case "pair": {
+        const parent = this.readLocation(location.parent, line);
+        if (parent.kind !== "pair") {
+          this.fail("type mismatch: expected pair", line);
+        }
+        const value = location.member === "first" ? parent.first : parent.second;
+        return value.kind === "reference" ? this.readLocation(value.target, line) : value;
+      }
       case "tuple": {
         const parent = this.readLocation(location.parent, line);
         if (parent.kind !== "tuple") {
@@ -372,6 +383,24 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
         );
         return;
       }
+      case "pair": {
+        const current = this.readLocation(location.parent, line);
+        if (current.kind !== "pair") {
+          this.fail("type mismatch: expected pair", line);
+        }
+        const assigned = this.assertType(location.type, value, line);
+        this.writeLocation(
+          location.parent,
+          {
+            kind: "pair",
+            type: current.type,
+            first: location.member === "first" ? assigned : current.first,
+            second: location.member === "second" ? assigned : current.second,
+          },
+          line,
+        );
+        return;
+      }
       case "tuple": {
         const current = this.readLocation(location.parent, line);
         if (current.kind !== "tuple") {
@@ -434,6 +463,8 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
       case "tuple":
         return value.type;
       case "array":
+        return value.type;
+      case "iterator":
         return value.type;
       case "pointer":
         return { kind: "PointerType", pointeeType: value.pointeeType };

@@ -48,6 +48,11 @@ export type TupleTypeNode = TemplateInstanceTypeNode & {
   templateArgs: TypeNode[];
 };
 
+export type IteratorTypeNode = TemplateInstanceTypeNode & {
+  template: { kind: "NamedType"; name: "__iterator" };
+  templateArgs: [TypeNode];
+};
+
 export type PointerTypeNode = {
   kind: "PointerType";
   pointeeType: TypeNode;
@@ -67,6 +72,7 @@ export type TypeNode =
   | MapTypeNode
   | PairTypeNode
   | TupleTypeNode
+  | IteratorTypeNode
   | PointerTypeNode
   | ReferenceTypeNode;
 
@@ -241,6 +247,7 @@ export type ExprNode =
   | CallExprNode
   | TemplateIdExprNode
   | TemplateCallExprNode
+  | MemberAccessExprNode
   | MethodCallExprNode
   | IndexExprNode
   | IdentifierExprNode
@@ -250,6 +257,7 @@ export type AssignTargetNode =
   | IdentifierExprNode
   | IndexExprNode
   | DerefExprNode
+  | MemberAccessExprNode
   | TemplateCallExprNode;
 
 export type AssignExprNode = NodeBase & {
@@ -339,6 +347,12 @@ export type TemplateCallExprNode = NodeBase & {
   args: ExprNode[];
 };
 
+export type MemberAccessExprNode = NodeBase & {
+  kind: "MemberAccessExpr";
+  receiver: ExprNode;
+  member: string;
+};
+
 export type MethodCallExprNode = NodeBase & {
   kind: "MethodCallExpr";
   receiver: ExprNode;
@@ -410,6 +424,7 @@ export type DebugValueView = {
     | "pair"
     | "tuple"
     | "array"
+    | "iterator"
     | "pointer"
     | "reference"
     | "void"
@@ -540,6 +555,14 @@ export function tupleType(elementTypes: TypeNode[]): TupleTypeNode {
   };
 }
 
+export function iteratorType(containerType: TypeNode): IteratorTypeNode {
+  return {
+    kind: "TemplateInstanceType",
+    template: { kind: "NamedType", name: "__iterator" },
+    templateArgs: [containerType],
+  };
+}
+
 export function pointerType(pointeeType: TypeNode): PointerTypeNode {
   return { kind: "PointerType", pointeeType };
 }
@@ -582,6 +605,10 @@ export function isPairType(type: TypeNode): type is PairTypeNode {
 
 export function isTupleType(type: TypeNode): type is TupleTypeNode {
   return isTemplateInstanceType(type) && type.template.name === "tuple";
+}
+
+export function isIteratorType(type: TypeNode): type is IteratorTypeNode {
+  return isTemplateInstanceType(type) && type.template.name === "__iterator";
 }
 
 export function isPointerType(type: TypeNode): type is PointerTypeNode {

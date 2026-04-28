@@ -1,26 +1,25 @@
 import type { CheckCtx } from "@/stdlib/check-context";
-import { registerMethodHandler } from "@/stdlib/check-registry";
+import { registerMemberHandler, registerMethodHandler } from "@/stdlib/check-registry";
 import { getMapMethodSpec } from "@/stdlib/map-methods";
+import { getPairMemberSpec } from "@/stdlib/pair-members";
 import { pairFirstType, pairSecondType } from "@/stdlib/template-types";
 import type { ExprNode, TypeNode } from "@/types";
 import { isMapType, isPairType } from "@/types";
 
-export function checkPairMethod(
+export function checkPairMember(
   receiverType: TypeNode,
-  method: string,
-  args: ExprNode[],
+  member: string,
   line: number,
   col: number,
   ctx: CheckCtx,
 ): TypeNode | null {
   if (!isPairType(receiverType)) return null;
-  if (method !== "first" && method !== "second") {
-    ctx.pushError(line, col, `unknown pair member '${method}'`);
-    for (const arg of args) ctx.validateExpr(arg);
+  const spec = getPairMemberSpec(member);
+  if (spec === null) {
+    ctx.pushError(line, col, `unknown pair member '${member}'`);
     return null;
   }
-  if (args.length !== 0) ctx.pushError(line, col, `${method} requires no arguments`);
-  return method === "first" ? pairFirstType(receiverType) : pairSecondType(receiverType);
+  return spec.name === "first" ? pairFirstType(receiverType) : pairSecondType(receiverType);
 }
 
 export function checkMapMethod(
@@ -44,10 +43,10 @@ export function checkMapMethod(
   return { kind: "PrimitiveType", name: "int" };
 }
 
-registerMethodHandler({
+registerMemberHandler({
   matches: isPairType,
-  handle: (receiverType, method, args, line, col, ctx) =>
-    checkPairMethod(receiverType, method, args, line, col, ctx),
+  handle: (receiverType, member, line, col, ctx) =>
+    checkPairMember(receiverType, member, line, col, ctx),
 });
 
 registerMethodHandler({

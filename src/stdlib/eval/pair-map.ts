@@ -1,21 +1,19 @@
 import type { RuntimeValue } from "@/runtime/value";
 import type { EvalCtx } from "@/stdlib/eval-context";
-import { registerMethodHandler } from "@/stdlib/eval-registry";
+import { registerMemberHandler, registerMethodHandler } from "@/stdlib/eval-registry";
 import { getMapMethodSpec } from "@/stdlib/map-methods";
+import { getPairMemberSpec } from "@/stdlib/pair-members";
 import type { ExprNode } from "@/types";
 
 export function evalPairMember(
   receiver: Extract<RuntimeValue, { kind: "pair" }>,
-  method: string,
-  args: ExprNode[],
+  member: string,
   line: number,
   ctx: EvalCtx,
 ): RuntimeValue {
-  if (method !== "first" && method !== "second") {
-    ctx.fail(`unknown pair member '${method}'`, line);
-  }
-  if (args.length !== 0) ctx.fail(`${method} requires no arguments`, line);
-  return method === "first" ? receiver.first : receiver.second;
+  const spec = getPairMemberSpec(member);
+  if (spec === null) ctx.fail(`unknown pair member '${member}'`, line);
+  return spec.name === "first" ? receiver.first : receiver.second;
 }
 
 export function evalMapMethod(
@@ -33,10 +31,10 @@ export function evalMapMethod(
   return { kind: "int", value: BigInt(receiver.entries.length) };
 }
 
-registerMethodHandler({
+registerMemberHandler({
   matches: (v) => v.kind === "pair",
-  handle: (receiver, method, args, line, ctx) =>
-    evalPairMember(receiver as Extract<RuntimeValue, { kind: "pair" }>, method, args, line, ctx),
+  handle: (receiver, member, line, ctx) =>
+    evalPairMember(receiver as Extract<RuntimeValue, { kind: "pair" }>, member, line, ctx),
 });
 
 registerMethodHandler({

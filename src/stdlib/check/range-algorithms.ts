@@ -5,9 +5,9 @@ import {
   getBuiltinRangeAlgorithmSpec,
   getBuiltinTemplateComparatorSpec,
 } from "@/stdlib/metadata";
-import { vectorElementType } from "@/stdlib/template-types";
+import { iteratorContainerType, vectorElementType } from "@/stdlib/template-types";
 import type { ExprNode, TypeNode, VectorTypeNode } from "@/types";
-import { isVectorType } from "@/types";
+import { isIteratorType, isVectorType } from "@/types";
 
 export function checkSort(args: ExprNode[], line: number, col: number, ctx: CheckCtx): TypeNode {
   const spec = getBuiltinRangeAlgorithmSpec("sort");
@@ -69,37 +69,32 @@ function validateVectorRangeArgs(
   col: number,
   ctx: CheckCtx,
 ): VectorTypeNode | null {
-  if (
-    beginExpr === undefined ||
-    endExpr === undefined ||
-    beginExpr.kind !== "MethodCallExpr" ||
-    endExpr.kind !== "MethodCallExpr" ||
-    beginExpr.method !== "begin" ||
-    endExpr.method !== "end" ||
-    beginExpr.args.length !== 0 ||
-    endExpr.args.length !== 0
-  ) {
-    ctx.pushError(line, col, `${callee} requires vector begin/end iterators`);
-    if (beginExpr !== undefined) ctx.validateExpr(beginExpr);
-    if (endExpr !== undefined) ctx.validateExpr(endExpr);
+  const beginType = beginExpr === undefined ? null : ctx.inferExprType(beginExpr);
+  const endType = endExpr === undefined ? null : ctx.inferExprType(endExpr);
+  if (beginType === null || endType === null) {
+    if (beginExpr === undefined || endExpr === undefined) {
+      ctx.pushError(line, col, `${callee} requires exactly 2 iterator arguments`);
+    }
     return null;
   }
-
-  if (!sameReceiver(beginExpr.receiver, endExpr.receiver)) {
-    ctx.pushError(line, col, `${callee} requires iterators from the same vector`);
+  if (!isIteratorType(beginType) || !isIteratorType(endType)) {
+    ctx.pushError(line, col, `${callee} requires vector iterators`);
+    return null;
   }
-
-  const receiverType = ctx.inferExprType(beginExpr.receiver);
-  if (receiverType === null) return null;
-  if (!isVectorType(receiverType)) {
+  const beginContainerType = iteratorContainerType(beginType);
+  const endContainerType = iteratorContainerType(endType);
+  if (
+    !ctx.isAssignable(beginContainerType, endContainerType) ||
+    !ctx.isAssignable(endContainerType, beginContainerType)
+  ) {
+    ctx.pushError(line, col, `${callee} requires iterators from the same vector`);
+    return null;
+  }
+  if (!isVectorType(beginContainerType)) {
     ctx.pushError(line, col, `${callee} requires a vector range`);
     return null;
   }
-  return receiverType;
-}
-
-function sameReceiver(left: ExprNode, right: ExprNode): boolean {
-  return left.kind === "Identifier" && right.kind === "Identifier" && left.name === right.name;
+  return beginContainerType;
 }
 
 registerFreeCall("sort", checkSort);

@@ -40,31 +40,23 @@ function expectVectorRange(
 ): { values: RuntimeValue[]; type: VectorTypeNode } {
   const beginExpr = args[0];
   const endExpr = args[1];
-  if (
-    beginExpr === undefined ||
-    endExpr === undefined ||
-    beginExpr.kind !== "MethodCallExpr" ||
-    endExpr.kind !== "MethodCallExpr"
-  ) {
-    ctx.fail(`${callee} requires vector begin/end iterators`, line);
+  if (beginExpr === undefined || endExpr === undefined) {
+    ctx.fail(`${callee} requires exactly 2 iterator arguments`, line);
   }
-  if (
-    beginExpr.method !== "begin" ||
-    endExpr.method !== "end" ||
-    beginExpr.args.length !== 0 ||
-    endExpr.args.length !== 0
-  ) {
-    ctx.fail(`${callee} requires vector begin/end iterators`, line);
+  const beginValue = ctx.ensureInitialized(ctx.evaluateExpr(beginExpr), line, "iterator");
+  const endValue = ctx.ensureInitialized(ctx.evaluateExpr(endExpr), line, "iterator");
+  if (beginValue.kind !== "iterator" || endValue.kind !== "iterator") {
+    ctx.fail(`${callee} requires vector iterators`, line);
   }
-  if (!sameReceiver(beginExpr.receiver, endExpr.receiver)) {
+  if (beginValue.ref !== endValue.ref) {
     ctx.fail(`${callee} requires iterators from the same vector`, line);
   }
-
-  const receiver = ctx.evaluateExpr(beginExpr.receiver);
-  const arrayValue = ctx.expectArray(receiver, line);
-  const store = ctx.arrays.get(arrayValue.ref);
+  const store = ctx.arrays.get(beginValue.ref);
   if (store === undefined) ctx.fail("invalid array reference", line);
   if (!isVectorType(store.type)) ctx.fail(`${callee} requires a vector range`, line);
+  if (beginValue.index !== 0 || endValue.index !== store.values.length) {
+    ctx.fail(`${callee} currently requires the full vector range`, line);
+  }
   return store as { values: RuntimeValue[]; type: VectorTypeNode };
 }
 
@@ -82,10 +74,6 @@ function isDescendingSortComparator(
     return true;
   }
   ctx.fail("unsupported sort comparator", line);
-}
-
-function sameReceiver(left: ExprNode, right: ExprNode): boolean {
-  return left.kind === "Identifier" && right.kind === "Identifier" && left.name === right.name;
 }
 
 registerFreeCall("sort", (args, line, ctx) => {

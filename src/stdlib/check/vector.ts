@@ -4,7 +4,7 @@ import { getSingleTypeTemplateArg } from "@/stdlib/template-exprs";
 import { vectorElementType } from "@/stdlib/template-types";
 import { describeVectorMethodArgs, getVectorMethodSpec } from "@/stdlib/vector-methods";
 import type { ExprNode, TemplateCallExprNode, TypeNode } from "@/types";
-import { isVectorType, vectorType } from "@/types";
+import { isVectorType, iteratorType, vectorType } from "@/types";
 
 export function checkVectorConstructor(expr: TemplateCallExprNode, ctx: CheckCtx): TypeNode | null {
   const elementType = getSingleTypeTemplateArg(expr.callee);
@@ -60,8 +60,8 @@ export function checkVectorMethod(
       return { kind: "PrimitiveType", name: "bool" };
     case "element":
       return vectorElementType(receiverType);
-    case "self":
-      return receiverType;
+    case "iterator":
+      return iteratorType(receiverType);
   }
 }
 

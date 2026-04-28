@@ -16,9 +16,15 @@ type MethodEvalRegistration = {
   ) => RuntimeValue;
 };
 
+type MemberEvalRegistration = {
+  matches: (receiver: RuntimeValue) => boolean;
+  handle: (receiver: RuntimeValue, member: string, line: number, ctx: EvalCtx) => RuntimeValue;
+};
+
 const freeCallHandlers = new Map<string, FreeCallEvalHandler>();
 const templateCallHandlers = new Map<string, TemplateCallEvalHandler>();
 const methodRegistrations: MethodEvalRegistration[] = [];
+const memberRegistrations: MemberEvalRegistration[] = [];
 
 export function registerFreeCall(name: string, handler: FreeCallEvalHandler): void {
   freeCallHandlers.set(name, handler);
@@ -30,6 +36,10 @@ export function registerTemplateCall(name: string, handler: TemplateCallEvalHand
 
 export function registerMethodHandler(registration: MethodEvalRegistration): void {
   methodRegistrations.push(registration);
+}
+
+export function registerMemberHandler(registration: MemberEvalRegistration): void {
+  memberRegistrations.push(registration);
 }
 
 export function dispatchFreeCall(
@@ -59,6 +69,18 @@ export function dispatchMethodCall(
 ): RuntimeValue | null {
   for (const reg of methodRegistrations) {
     if (reg.matches(receiver)) return reg.handle(receiver, method, args, line, ctx);
+  }
+  return null;
+}
+
+export function dispatchMemberAccess(
+  receiver: RuntimeValue,
+  member: string,
+  line: number,
+  ctx: EvalCtx,
+): RuntimeValue | null {
+  for (const reg of memberRegistrations) {
+    if (reg.matches(receiver)) return reg.handle(receiver, member, line, ctx);
   }
   return null;
 }

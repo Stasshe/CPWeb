@@ -18,7 +18,12 @@ import type {
   TypeNode,
 } from "@/types";
 import { isVectorType } from "@/types";
-import { evaluateMethodCall, evaluateTemplateCall, tryEvaluateBuiltinCall } from "./builtin-eval";
+import {
+  evaluateMemberAccess,
+  evaluateMethodCall,
+  evaluateTemplateCall,
+  tryEvaluateBuiltinCall,
+} from "./builtin-eval";
 import { InterpreterRuntime } from "./runtime";
 
 export type RuntimeArgument =
@@ -116,7 +121,12 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         return this.fail(`'${expr.callee}' was not declared in this scope`, expr.line);
       }
       case "TemplateCallExpr":
+        if (this.templateFunctions.has(expr.callee.template)) {
+          return this.invokeExplicitTemplateFunction(expr);
+        }
         return evaluateTemplateCall(expr, this.evalCtx);
+      case "MemberAccessExpr":
+        return evaluateMemberAccess(expr.receiver, expr.member, expr.line, this.evalCtx);
       case "MethodCallExpr":
         return evaluateMethodCall(expr.receiver, expr.method, expr.args, expr.line, this.evalCtx);
       case "IndexExpr":
@@ -250,6 +260,8 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         return this.resolveIndexedLocation(target.target, target.index, line);
       case "DerefExpr":
         return this.resolvePointerLocation(target.pointer, line);
+      case "MemberAccessExpr":
+        return this.resolveMemberAccessLocation(target.receiver, target.member, line);
       case "TemplateCallExpr":
         return this.resolveTemplateCallLocation(target, line);
     }
@@ -260,6 +272,7 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       expr.kind === "Identifier" ||
       expr.kind === "IndexExpr" ||
       expr.kind === "DerefExpr" ||
+      expr.kind === "MemberAccessExpr" ||
       isTupleGetTemplateCall(expr)
     );
   }
@@ -282,6 +295,48 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     this.fail("template call is not assignable", line);
   }
 
+  private invokeExplicitTemplateFunction(
+    expr: Extract<ExprNode, { kind: "TemplateCallExpr" }>,
+  ): RuntimeValue {
+    const templateFn = this.templateFunctions.get(expr.callee.template);
+    if (templateFn === undefined) {
+      return this.fail(`'${expr.callee.template}' was not declared in this scope`, expr.line);
+    }
+    if (expr.callee.templateArgs.length !== templateFn.typeParams.length) {
+      this.fail(
+        `'${templateFn.name}' requires ${templateFn.typeParams.length.toString()} template argument${templateFn.typeParams.length === 1 ? "" : "s"}`,
+        expr.line,
+      );
+    }
+
+    const map = new Map<string, TypeNode>();
+    for (let i = 0; i < templateFn.typeParams.length; i += 1) {
+      const typeParam = templateFn.typeParams[i];
+      const templateArg = expr.callee.templateArgs[i];
+      if (typeParam === undefined || templateArg?.kind !== "TypeTemplateArg") {
+        this.fail(`explicit template arguments for '${templateFn.name}' must be types`, expr.line);
+      }
+      map.set(typeParam, templateArg.type);
+    }
+
+    const instantiated = instantiateFunction(templateFn, map);
+    const argValues: RuntimeArgument[] = expr.args.map((arg, index) => {
+      const param = instantiated.params[index];
+      if (param !== undefined && param.type.kind === "ReferenceType") {
+        if (!this.isAssignableTarget(arg)) {
+          this.fail("reference argument must be an lvalue", arg.line);
+        }
+        return {
+          kind: "reference",
+          target: this.resolveAssignTargetLocation(arg, arg.line),
+          type: param.type.referredType,
+        };
+      }
+      return { kind: "value", value: this.evaluateExpr(arg) };
+    });
+    return this.invokeFunction(instantiated, argValues);
+  }
+
   private resolvePointerLocation(pointerExpr: ExprNode, line: number): RuntimeLocation {
     const pointer = this.ensureInitialized(this.evaluateExpr(pointerExpr), line, "pointer");
     if (pointer.kind !== "pointer") {
@@ -291,6 +346,28 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       this.fail("dereference of null pointer", line);
     }
     return pointer.target;
+  }
+
+  private resolveMemberAccessLocation(
+    receiverExpr: ExprNode,
+    member: string,
+    line: number,
+  ): RuntimeLocation {
+    if (!this.isAssignableTarget(receiverExpr)) {
+      this.fail("member access target must be assignable", line);
+    }
+    const parent = this.resolveAssignTargetLocation(receiverExpr, line);
+    const receiver = this.readLocation(parent, line);
+    if (receiver.kind !== "pair") {
+      this.fail("type mismatch: expected pair", line);
+    }
+    if (member === "first") {
+      return { kind: "pair", parent, member, type: receiver.type.templateArgs[0] as TypeNode };
+    }
+    if (member === "second") {
+      return { kind: "pair", parent, member, type: receiver.type.templateArgs[1] as TypeNode };
+    }
+    this.fail(`unknown pair member '${member}'`, line);
   }
 
   protected resolveIndexedLocation(

@@ -1,4 +1,5 @@
 import type {
+  IteratorTypeNode,
   MapTypeNode,
   PairTypeNode,
   PrimitiveTypeNode,
@@ -18,6 +19,7 @@ export type RuntimeLocation =
       type: TypeNode;
       access: "entry" | "value";
     }
+  | { kind: "pair"; parent: RuntimeLocation; member: "first" | "second"; type: TypeNode }
   | { kind: "tuple"; parent: RuntimeLocation; index: number; type: TypeNode }
   | { kind: "string"; parent: RuntimeLocation; index: number };
 
@@ -31,6 +33,7 @@ export type RuntimeValue =
   | { kind: "pair"; type: PairTypeNode; first: RuntimeValue; second: RuntimeValue }
   | { kind: "tuple"; type: TupleTypeNode; values: RuntimeValue[] }
   | { kind: "array"; ref: number; type: VectorTypeNode | Exclude<TypeNode, PrimitiveTypeNode> }
+  | { kind: "iterator"; type: IteratorTypeNode; ref: number; index: number }
   | { kind: "pointer"; pointeeType: TypeNode; target: RuntimeLocation | null }
   | { kind: "reference"; type: ReferenceTypeNode; target: RuntimeLocation }
   | { kind: "void" }
@@ -84,6 +87,8 @@ export function stringifyValue(value: RuntimeValue): string {
       return "";
     case "array":
       return "<array>";
+    case "iterator":
+      return "<iterator>";
     case "pointer":
       return value.target === null ? "nullptr" : "<pointer>";
     case "reference":

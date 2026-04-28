@@ -7,6 +7,7 @@ import {
 } from "@/stdlib/builtins/compare";
 import {
   dispatchFreeCall,
+  dispatchMemberAccess as dispatchStdlibMemberAccess,
   dispatchMethodCall,
   dispatchTemplateCall,
   type EvalCtx,
@@ -49,6 +50,19 @@ export function evaluateMethodCall(
   return (
     dispatchMethodCall(receiver, method, args, line, ctx) ??
     ctx.fail("type mismatch: expected array/vector/pair/map", line)
+  );
+}
+
+export function evaluateMemberAccess(
+  receiverExpr: ExprNode,
+  member: string,
+  line: number,
+  ctx: EvalCtx,
+): RuntimeValue {
+  const receiver = ctx.evaluateExpr(receiverExpr);
+  return (
+    dispatchStdlibMemberAccess(receiver, member, line, ctx) ??
+    ctx.fail("type mismatch: expected pair", line)
   );
 }
 

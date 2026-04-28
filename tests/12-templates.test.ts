@@ -52,6 +52,26 @@ int main() {
     expect(result.output.stdout).toBe("3\n7\n");
   });
 
+  it("supports explicit template arguments on function calls", () => {
+    const result = compileAndRun(
+      `
+#include<iostream>
+using namespace std;
+template<typename T>
+T twice(T x) {
+  return x + x;
+}
+int main() {
+  cout << twice<int>(6) << '\\n';
+  return 0;
+}
+`,
+      "",
+    );
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("12\n");
+  });
+
   it("two type params", () => {
     const result = compileAndRun(
       `

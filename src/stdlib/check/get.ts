@@ -37,3 +37,5 @@ export function checkTupleGet(expr: TemplateCallExprNode, ctx: CheckCtx): TypeNo
   }
   return elementType;
 }
+
+registerTemplateCall("get", checkTupleGet);

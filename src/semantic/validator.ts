@@ -1,4 +1,4 @@
-import { getSupportedTemplateTypeSpec } from "@/stdlib/metadata";
+import { getSupportedTemplateTypeSpec, getUnsupportedTemplateTypeSpec } from "@/stdlib/metadata";
 import {
   mapKeyType,
   mapValueType,
@@ -32,6 +32,7 @@ import {
 import {
   type ValidationContext,
   validateBuiltinCall,
+  validateMemberAccess,
   validateMethodCall,
   validateTemplateCall,
   validateTemplateFunctionCall,
@@ -150,6 +151,7 @@ function validateParameterType(
   col: number,
   context: ValidationContext,
 ): void {
+  validateTypeNode(type, line, col, context);
   if (containsVoid(type)) {
     pushError(context, line, col, "parameter type cannot be void");
     return;
@@ -160,6 +162,7 @@ function validateParameterType(
 }
 
 function validateFunctionReturnType(fn: FunctionDeclNode, context: ValidationContext): void {
+  validateTypeNode(fn.returnType, fn.line, fn.col, context);
   if (fn.returnType.kind === "ArrayType" || fn.returnType.kind === "ReferenceType") {
     pushError(
       context,
@@ -270,6 +273,7 @@ function validateDecl(
 ): void {
   switch (stmt.kind) {
     case "VarDecl":
+      validateTypeNode(stmt.type, stmt.line, stmt.col, context);
       if (isArrayType(stmt.type) || isVectorType(stmt.type)) {
         pushError(
           context,
@@ -292,6 +296,7 @@ function validateDecl(
       defineSymbol(stmt.name, stmt.type, stmt.line, stmt.col, context);
       return;
     case "ArrayDecl":
+      validateTypeNode(stmt.type, stmt.line, stmt.col, context);
       if (containsVoid(stmt.type)) {
         pushError(context, stmt.line, stmt.col, "array element type cannot be void");
       }
@@ -304,6 +309,7 @@ function validateDecl(
       defineSymbol(stmt.name, stmt.type, stmt.line, stmt.col, context);
       return;
     case "VectorDecl":
+      validateTypeNode(stmt.type, stmt.line, stmt.col, context);
       if (containsVoid(stmt.type)) {
         pushError(context, stmt.line, stmt.col, "vector element type cannot be void");
       }
@@ -464,9 +470,6 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
       return ptrType.pointeeType;
     }
     case "TemplateIdExpr":
-      if (getSupportedTemplateTypeSpec(expr.template) !== null) {
-        return null;
-      }
       pushError(
         context,
         expr.line,
@@ -559,7 +562,24 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
     case "CallExpr":
       return validateCall(expr.callee, expr.args, expr.line, expr.col, context);
     case "TemplateCallExpr":
-      return validateTemplateCall(expr, context, validateExpr, inferExprType);
+      return validateTemplateCall(
+        expr,
+        context,
+        validateExpr,
+        inferExprType,
+        validateArgumentAgainstParam,
+        validateFunction,
+      );
+    case "MemberAccessExpr":
+      return validateMemberAccess(
+        expr.receiver,
+        expr.member,
+        expr.line,
+        expr.col,
+        context,
+        validateExpr,
+        inferExprType,
+      );
     case "MethodCallExpr":
       return validateMethodCall(
         expr.receiver,
@@ -682,6 +702,51 @@ function normalizeExpectedType(expected: TypeNode | "bool" | "int"): TypeNode {
   if (expected === "bool") return { kind: "PrimitiveType", name: "bool" };
   if (expected === "int") return { kind: "PrimitiveType", name: "int" };
   return expected;
+}
+
+function validateTypeNode(
+  type: TypeNode,
+  line: number,
+  col: number,
+  context: ValidationContext,
+): void {
+  switch (type.kind) {
+    case "PrimitiveType":
+    case "NamedType":
+      return;
+    case "ArrayType":
+      validateTypeNode(type.elementType, line, col, context);
+      return;
+    case "PointerType":
+      validateTypeNode(type.pointeeType, line, col, context);
+      return;
+    case "ReferenceType":
+      validateTypeNode(type.referredType, line, col, context);
+      return;
+    case "TemplateInstanceType": {
+      const spec = getSupportedTemplateTypeSpec(type.template.name);
+      const unsupportedSpec = getUnsupportedTemplateTypeSpec(type.template.name);
+      if (unsupportedSpec !== null) {
+        pushError(context, line, col, "this feature is not supported in this interpreter");
+      } else if (type.template.name !== "__iterator" && spec === null) {
+        pushError(context, line, col, `'${type.template.name}' is not a supported template type`);
+      } else if (
+        spec !== null &&
+        spec.arity >= 0 &&
+        type.templateArgs.length !== spec.arity
+      ) {
+        pushError(
+          context,
+          line,
+          col,
+          `${type.template.name} requires ${spec.arity.toString()} template argument(s)`,
+        );
+      }
+      for (const templateArg of type.templateArgs) {
+        validateTypeNode(templateArg, line, col, context);
+      }
+    }
+  }
 }
 
 function inferLValueType(expr: ExprNode, context: ValidationContext): TypeNode | null {

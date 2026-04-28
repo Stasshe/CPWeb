@@ -1,4 +1,3 @@
-import { getSupportedTemplateTypeSpec } from "@/stdlib/metadata";
 import {
   mapKeyType,
   mapValueType,
@@ -13,26 +12,19 @@ import {
   isMapType,
   isPairType,
   isPrimitiveType,
+  isTemplateInstanceType,
   isTupleType,
   isVectorType,
-  mapType,
-  pairType,
   pointerType,
+  templateInstanceType,
   primitiveType,
   referenceType,
-  tupleType,
-  vectorType,
 } from "@/types";
 import { BaseParserCore } from "./core";
 
 const TYPE_KEYWORDS = new Set<string>(["int", "long", "double", "bool", "char", "string", "void"]);
 
 export abstract class BaseParserTypeSupport extends BaseParserCore {
-  private isTemplateTypeToken(name: "vector" | "map" | "pair" | "tuple"): boolean {
-    const token = this.peek();
-    return (token.kind === "identifier" || token.kind === "keyword") && token.text === name;
-  }
-
   protected parseType(): TypeNode | null {
     const token = this.peek();
     if (
@@ -43,7 +35,7 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
       this.advance();
       return { kind: "NamedType", name: token.text };
     }
-    const templateType = this.parseSupportedTemplateType();
+    const templateType = this.parseTemplateInstanceType();
     if (templateType !== null) {
       return templateType;
     }
@@ -90,8 +82,7 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
   }
 
   protected override checkTypeStart(): boolean {
-    if (this.peekPrimitiveTypeKeyword() || this.peekSupportedTemplateTypeName() !== null)
-      return true;
+    if (this.peekPrimitiveTypeKeyword() || this.peekTemplateTypeName() !== null) return true;
     if (this.activeTypeParams.length > 0) {
       const token = this.peek();
       return token.kind === "identifier" && this.activeTypeParams.includes(token.text);
@@ -146,7 +137,9 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
         type.kind === "ArrayType" ? type.elementType : vectorElementType(type),
       );
     }
-    this.errorAtCurrent("unsupported template type in void check");
+    if (isTemplateInstanceType(type)) {
+      return type.templateArgs.some((templateArg) => this.isVoidTypeNode(templateArg));
+    }
     return false;
   }
 
@@ -195,79 +188,71 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
     return { nameToken, type: declaredType, dimensions };
   }
 
-  protected peekSupportedTemplateTypeName(): "vector" | "map" | "pair" | "tuple" | null {
+  protected peekTemplateTypeName(): string | null {
     const token = this.peek();
     const next = this.tokens[this.index + 1];
-    const spec =
-      token.kind === "identifier" || token.kind === "keyword"
-        ? getSupportedTemplateTypeSpec(token.text)
-        : null;
-    if (spec !== null && next?.kind === "symbol" && next.text === "<") {
-      return spec.name;
+    if (
+      (token.kind === "identifier" || token.kind === "keyword") &&
+      next?.kind === "symbol" &&
+      next.text === "<" &&
+      !this.isTemplateCallLikeSequence()
+    ) {
+      return token.text;
     }
     return null;
   }
 
+  private isTemplateCallLikeSequence(): boolean {
+    let depth = 0;
+    let cursor = this.index + 1;
+
+    while (cursor < this.tokens.length) {
+      const token = this.tokens[cursor];
+      if (token === undefined) {
+        return false;
+      }
+      if (token.kind === "symbol") {
+        if (token.text === "<") {
+          depth += 1;
+        } else if (token.text === ">>") {
+          depth -= 2;
+        } else if (token.text === ">") {
+          depth -= 1;
+        }
+        if (depth <= 0) {
+          const after = this.tokens[cursor + 1];
+          return after?.kind === "symbol" && after.text === "(";
+        }
+      }
+      cursor += 1;
+    }
+    return false;
+  }
+
   protected parseVectorType(): VectorDeclNode["type"] | null {
-    const type = this.parseSupportedTemplateType();
+    const type = this.parseTemplateInstanceType();
     return type !== null && isVectorType(type) ? type : null;
   }
 
-  protected parseSupportedTemplateType(): TypeNode | null {
-    const templateTypeName = this.peekSupportedTemplateTypeName();
+  protected parseTemplateInstanceType(): TypeNode | null {
+    const templateTypeName = this.peekTemplateTypeName();
     if (templateTypeName === null) {
       return null;
     }
-    const spec = getSupportedTemplateTypeSpec(templateTypeName);
-    if (spec === null) {
-      return null;
-    }
     this.advance();
-    if (!this.consumeSymbol("<", `expected '<' after ${spec.name}`)) {
+    if (!this.consumeSymbol("<", `expected '<' after ${templateTypeName}`)) {
       return null;
     }
 
-    const templateArgs = this.parseTemplateTypeArguments(spec.name);
+    const templateArgs = this.parseTemplateTypeArguments(templateTypeName);
     if (templateArgs === null) {
       return null;
     }
 
-    if (!this.consumeTypeClose(`expected '>' after ${spec.name} type`)) {
+    if (!this.consumeTypeClose(`expected '>' after ${templateTypeName} type`)) {
       return null;
     }
-
-    if (spec.arity >= 0 && templateArgs.length !== spec.arity) {
-      this.errorAtCurrent(`${spec.name} requires ${spec.arity.toString()} template argument(s)`);
-      return null;
-    }
-
-    switch (spec.name) {
-      case "vector": {
-        const elementType = templateArgs[0];
-        if (elementType === undefined) {
-          return null;
-        }
-        return vectorType(elementType);
-      }
-      case "map": {
-        const keyType = templateArgs[0];
-        const valueType = templateArgs[1];
-        if (keyType === undefined || valueType === undefined) {
-          return null;
-        }
-        return mapType(keyType, valueType);
-      }
-      case "pair": {
-        const firstType = templateArgs[0];
-        const secondType = templateArgs[1];
-        if (firstType === undefined || secondType === undefined) {
-          return null;
-        }
-        return pairType(firstType, secondType);
-      }
-      case "tuple":
-        return tupleType(templateArgs);
-    }
+    return templateInstanceType({ kind: "NamedType", name: templateTypeName }, templateArgs);
   }
 
   private parseTemplateTypeArguments(templateName: string): TypeNode[] | null {

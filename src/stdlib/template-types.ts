@@ -1,4 +1,5 @@
 import type {
+  IteratorTypeNode,
   MapTypeNode,
   PairTypeNode,
   TemplateInstanceTypeNode,
@@ -33,4 +34,8 @@ export function pairSecondType(type: PairTypeNode): TypeNode {
 
 export function tupleElementTypes(type: TupleTypeNode): TypeNode[] {
   return type.templateArgs;
+}
+
+export function iteratorContainerType(type: IteratorTypeNode): TypeNode {
+  return type.templateArgs[0] as TypeNode;
 }

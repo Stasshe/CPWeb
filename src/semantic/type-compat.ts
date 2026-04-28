@@ -135,6 +135,7 @@ export function isAssignableExpr(expr: ExprNode): boolean {
     expr.kind === "Identifier" ||
     expr.kind === "IndexExpr" ||
     expr.kind === "DerefExpr" ||
+    expr.kind === "MemberAccessExpr" ||
     isTupleGetTemplateCall(expr)
   );
 }

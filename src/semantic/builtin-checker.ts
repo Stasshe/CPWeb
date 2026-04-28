@@ -1,10 +1,12 @@
 import {
   dispatchFreeCall,
+  dispatchMemberAccess,
   dispatchMethodCall,
   dispatchTemplateCall,
   type CheckCtx,
 } from "@/stdlib/check";
 import { getBuiltinTemplateComparatorSpec } from "@/stdlib/metadata";
+import { isTypeTemplateArg } from "@/stdlib/template-exprs";
 import type {
   CompileError,
   ExprNode,
@@ -67,10 +69,28 @@ export function validateTemplateCall(
   context: ValidationContext,
   validateExpr: ValidateExprFn,
   inferExprType: InferExprTypeFn,
+  validateArgumentAgainstParam: (
+    arg: ExprNode,
+    paramType: TypeNode | undefined,
+    context: ValidationContext,
+  ) => void,
+  validateInstantiatedFn: (fn: FunctionDeclNode, context: ValidationContext) => void,
 ): TypeNode | null {
   const ctx = makeCheckCtx(context, validateExpr, inferExprType);
 
   if (getBuiltinTemplateComparatorSpec(expr.callee.template) !== null) return null;
+
+  const templateFn = context.templateFunctions.get(expr.callee.template);
+  if (templateFn !== undefined) {
+    return validateExplicitTemplateFunctionCall(
+      templateFn,
+      expr,
+      context,
+      validateExpr,
+      validateArgumentAgainstParam,
+      validateInstantiatedFn,
+    );
+  }
 
   const result = dispatchTemplateCall(expr, ctx);
   if (result !== "not_registered") return result;
@@ -105,6 +125,84 @@ export function validateMethodCall(
   if (result === "not_matched") {
     context.errors.push({ line, col, message: "type mismatch: expected array/vector/pair/map" });
     for (const arg of args) validateExpr(arg, context);
+    return null;
+  }
+  return result;
+}
+
+function validateExplicitTemplateFunctionCall(
+  templateFn: TemplateFunctionDeclNode,
+  expr: TemplateCallExprNode,
+  context: ValidationContext,
+  validateExpr: ValidateExprFn,
+  validateArgumentAgainstParam: (
+    arg: ExprNode,
+    paramType: TypeNode | undefined,
+    context: ValidationContext,
+  ) => void,
+  validateInstantiatedFn: (fn: FunctionDeclNode, context: ValidationContext) => void,
+): TypeNode | null {
+  if (expr.callee.templateArgs.length !== templateFn.typeParams.length) {
+    context.errors.push({
+      line: expr.line,
+      col: expr.col,
+      message: `'${templateFn.name}' requires ${templateFn.typeParams.length.toString()} template argument${templateFn.typeParams.length === 1 ? "" : "s"}`,
+    });
+    for (const arg of expr.args) validateExpr(arg, context);
+    return null;
+  }
+
+  const map = new Map<string, TypeNode>();
+  for (let i = 0; i < templateFn.typeParams.length; i += 1) {
+    const typeParam = templateFn.typeParams[i];
+    const templateArg = expr.callee.templateArgs[i];
+    if (typeParam === undefined || templateArg === undefined || !isTypeTemplateArg(templateArg)) {
+      context.errors.push({
+        line: expr.line,
+        col: expr.col,
+        message: `explicit template arguments for '${templateFn.name}' must be types`,
+      });
+      for (const arg of expr.args) validateExpr(arg, context);
+      return null;
+    }
+    map.set(typeParam, templateArg.type);
+  }
+
+  const key = instantiationKey(templateFn.name, map, templateFn.typeParams);
+  if (context.instantiatingTemplates.has(key)) return null;
+
+  context.instantiatingTemplates.add(key);
+  const instantiated = instantiateFunction(templateFn, map);
+  for (let i = 0; i < expr.args.length; i += 1) {
+    const arg = expr.args[i];
+    const param = instantiated.params[i];
+    if (arg !== undefined && param !== undefined) {
+      validateArgumentAgainstParam(arg, param.type, context);
+    }
+  }
+  validateInstantiatedFn(instantiated, context);
+  context.instantiatingTemplates.delete(key);
+  return instantiated.returnType;
+}
+
+export function validateMemberAccess(
+  receiver: ExprNode,
+  member: string,
+  line: number,
+  col: number,
+  context: ValidationContext,
+  validateExpr: ValidateExprFn,
+  inferExprType: InferExprTypeFn,
+): TypeNode | null {
+  const receiverType = inferExprType(receiver, context);
+  if (receiverType === null) {
+    return null;
+  }
+
+  const ctx = makeCheckCtx(context, validateExpr, inferExprType);
+  const result = dispatchMemberAccess(receiverType, member, line, col, ctx);
+  if (result === "not_matched") {
+    context.errors.push({ line, col, message: "type mismatch: expected pair" });
     return null;
   }
   return result;

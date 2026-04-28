@@ -1,4 +1,4 @@
-import { getBuiltinTemplateComparatorSpec, isSupportedTemplateTypeName } from "@/stdlib/metadata";
+import { getBuiltinTemplateComparatorSpec } from "@/stdlib/metadata";
 import type {
   AddressOfExprNode,
   AssignExprNode,
@@ -264,8 +264,8 @@ export abstract class ExpressionParser extends BaseParser {
         if (methodToken === null) {
           break;
         }
-        const args: ExprNode[] = [];
         if (this.matchSymbol("(")) {
+          const args: ExprNode[] = [];
           if (!this.matchSymbol(")")) {
             while (true) {
               args.push(this.parseExpression());
@@ -277,12 +277,19 @@ export abstract class ExpressionParser extends BaseParser {
               }
             }
           }
+          expr = {
+            kind: "MethodCallExpr",
+            receiver: expr,
+            method: methodToken.text,
+            args,
+            ...this.rangeToPrevious(expr),
+          };
+          continue;
         }
         expr = {
-          kind: "MethodCallExpr",
+          kind: "MemberAccessExpr",
           receiver: expr,
-          method: methodToken.text,
-          args,
+          member: methodToken.text,
           ...this.rangeToPrevious(expr),
         };
         continue;
@@ -389,20 +396,11 @@ export abstract class ExpressionParser extends BaseParser {
 
   private parseTemplateIdExpr(): TemplateIdExprNode | null {
     const startIndex = this.index;
-    const startToken = this.tokens[startIndex];
-    if (startToken === undefined) {
+    if (this.tokens[startIndex] === undefined) {
       return null;
     }
     const token = this.peek();
-    const next = this.tokens[this.index + 1];
-    const comparator =
-      token?.kind === "identifier" ? getBuiltinTemplateComparatorSpec(token.text) : null;
-    if (
-      !(token?.kind === "identifier" || token?.kind === "keyword") ||
-      (comparator === null && token.text !== "get" && !isSupportedTemplateTypeName(token.text)) ||
-      next?.kind !== "symbol" ||
-      next.text !== "<"
-    ) {
+    if (!this.looksLikeTemplateCallStart(startIndex) || token.kind === "eof") {
       return null;
     }
 
@@ -464,6 +462,50 @@ export abstract class ExpressionParser extends BaseParser {
       }
     }
     return args;
+  }
+
+  private looksLikeTemplateCallStart(startIndex: number): boolean {
+    const startToken = this.tokens[startIndex];
+    const next = this.tokens[startIndex + 1];
+    if (
+      startToken === undefined ||
+      !(
+        startToken.kind === "identifier" ||
+        startToken.kind === "keyword"
+      ) ||
+      next?.kind !== "symbol" ||
+      next.text !== "<"
+    ) {
+      return false;
+    }
+
+    if (getBuiltinTemplateComparatorSpec(startToken.text) !== null) {
+      return true;
+    }
+
+    let depth = 0;
+    let cursor = startIndex + 1;
+    while (cursor < this.tokens.length) {
+      const token = this.tokens[cursor];
+      if (token === undefined) {
+        return false;
+      }
+      if (token.kind === "symbol") {
+        if (token.text === "<") {
+          depth += 1;
+        } else if (token.text === ">>") {
+          depth -= 2;
+        } else if (token.text === ">") {
+          depth -= 1;
+        }
+        if (depth <= 0) {
+          const after = this.tokens[cursor + 1];
+          return after?.kind === "symbol" && after.text === "(";
+        }
+      }
+      cursor += 1;
+    }
+    return false;
   }
 
   private parseLeftAssociative(parseOperand: () => ExprNode, operators: string[]): ExprNode {

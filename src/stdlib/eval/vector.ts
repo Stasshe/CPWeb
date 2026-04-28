@@ -9,7 +9,7 @@ import {
   type VectorMethodName,
 } from "@/stdlib/vector-methods";
 import type { ExprNode, VectorTypeNode } from "@/types";
-import { isVectorType, vectorType } from "@/types";
+import { isVectorType, iteratorType, vectorType } from "@/types";
 
 export function evalVectorConstructor(
   type: VectorTypeNode,
@@ -36,7 +36,7 @@ export function evalVectorConstructor(
 }
 
 export function evalVectorMethod(
-  receiver: RuntimeValue,
+  receiver: Extract<RuntimeValue, { kind: "array" }>,
   method: string,
   args: ExprNode[],
   vStore: { type: VectorTypeNode; values: RuntimeValue[] },
@@ -53,7 +53,9 @@ export function evalVectorMethod(
 
 registerTemplateCall("vector", (expr, ctx) => {
   const elementType = getSingleTypeTemplateArg(expr.callee);
-  if (elementType === null) ctx.fail("vector constructor requires exactly 1 type argument", expr.line);
+  if (elementType === null) {
+    return ctx.fail("vector constructor requires exactly 1 type argument", expr.line);
+  }
   const args = expr.args.map((arg) => ctx.evaluateExpr(arg));
   return evalVectorConstructor(vectorType(elementType), args, expr.line, ctx);
 });
@@ -63,10 +65,14 @@ registerMethodHandler({
   handle: (receiver, method, args, line, ctx) => {
     const arrayValue = ctx.expectArray(receiver, line);
     const store = ctx.arrays.get(arrayValue.ref);
-    if (store === undefined) ctx.fail("invalid array reference", line);
-    if (!isVectorType(store.type)) ctx.fail(`method '${method}' is not supported for fixed array`, line);
+    if (store === undefined) {
+      return ctx.fail("invalid array reference", line);
+    }
+    if (!isVectorType(store.type)) {
+      ctx.fail(`method '${method}' is not supported for fixed array`, line);
+    }
     return evalVectorMethod(
-      receiver,
+      arrayValue,
       method,
       args,
       store as { type: VectorTypeNode; values: RuntimeValue[] },
@@ -77,7 +83,7 @@ registerMethodHandler({
 });
 
 function applyMethod(
-  receiver: RuntimeValue,
+  receiver: Extract<RuntimeValue, { kind: "array" }>,
   method: VectorMethodName,
   args: ExprNode[],
   vStore: { type: VectorTypeNode; values: RuntimeValue[] },
@@ -86,8 +92,14 @@ function applyMethod(
 ): RuntimeValue {
   switch (method) {
     case "begin":
+      return { kind: "iterator", type: iteratorType(vStore.type), ref: receiver.ref, index: 0 };
     case "end":
-      return receiver;
+      return {
+        kind: "iterator",
+        type: iteratorType(vStore.type),
+        ref: receiver.ref,
+        index: vStore.values.length,
+      };
     case "push_back": {
       const value = ctx.castToElementType(
         ctx.evaluateExpr(args[0] as ExprNode),

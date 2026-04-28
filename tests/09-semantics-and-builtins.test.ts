@@ -247,6 +247,21 @@ int main() {
     expect(result.output.stdout).toBe("10 20\n");
   });
 
+  it("supports pair member assignment as lvalue", () => {
+    const source = `
+int main() {
+  pair<int, int> p = make_pair(1, 2);
+  p.first = 7;
+  p.second = p.first + 5;
+  cout << p.first << " " << p.second << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("7 12\n");
+  });
+
   it("supports vector of pairs", () => {
     const source = `
 int main() {

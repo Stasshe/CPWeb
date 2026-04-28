@@ -388,6 +388,7 @@ export function isAssignTarget(expr: ExprNode): expr is AssignTargetNode {
     expr.kind === "Identifier" ||
     expr.kind === "IndexExpr" ||
     expr.kind === "DerefExpr" ||
+    expr.kind === "MemberAccessExpr" ||
     isTupleGetTemplateCall(expr)
   );
 }

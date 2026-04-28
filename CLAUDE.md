@@ -12,8 +12,9 @@
 
 ## テンプレート実装
 
-- 完全なテンプレート実装は個別の特別扱い追加ではなく、`ai-docs/TEMPLATE_ROADMAP.md` の段階に沿って進める_
-- 非 `tuple` の特例は無計画に増やさず、まず `stdlib/metadata.ts` や stdlib handler へ吸収できないかを確認する
+- テンプレート関連は parser の既知名分岐を増やさず、一般の template-id / template-type として受理してから `stdlib/` と template instantiation で解決する
+- 標準ライブラリ風機能は evaluator / validator 直書きではなく、`stdlib/metadata.ts` と stdlib handler に寄せる
+- `pair.first` のようなメンバー、`map.size()` のようなメソッド、`vector.begin()/end()` が返す iterator を C++ 風の形で表現し、legacy な AST 形特例を増やさない
 
 ## ディレクトリ構造
 

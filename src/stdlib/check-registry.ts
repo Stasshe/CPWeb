@@ -22,9 +22,21 @@ type MethodCheckRegistration = {
   ) => TypeNode | null;
 };
 
+type MemberCheckRegistration = {
+  matches: (receiverType: TypeNode) => boolean;
+  handle: (
+    receiverType: TypeNode,
+    member: string,
+    line: number,
+    col: number,
+    ctx: CheckCtx,
+  ) => TypeNode | null;
+};
+
 const freeCallHandlers = new Map<string, FreeCallCheckHandler>();
 const templateCallHandlers = new Map<string, TemplateCallCheckHandler>();
 const methodRegistrations: MethodCheckRegistration[] = [];
+const memberRegistrations: MemberCheckRegistration[] = [];
 
 export function registerFreeCall(name: string, handler: FreeCallCheckHandler): void {
   freeCallHandlers.set(name, handler);
@@ -36,6 +48,10 @@ export function registerTemplateCall(name: string, handler: TemplateCallCheckHan
 
 export function registerMethodHandler(registration: MethodCheckRegistration): void {
   methodRegistrations.push(registration);
+}
+
+export function registerMemberHandler(registration: MemberCheckRegistration): void {
+  memberRegistrations.push(registration);
 }
 
 export function dispatchFreeCall(
@@ -69,6 +85,19 @@ export function dispatchMethodCall(
 ): TypeNode | null | "not_matched" {
   for (const reg of methodRegistrations) {
     if (reg.matches(receiverType)) return reg.handle(receiverType, method, args, line, col, ctx);
+  }
+  return "not_matched";
+}
+
+export function dispatchMemberAccess(
+  receiverType: TypeNode,
+  member: string,
+  line: number,
+  col: number,
+  ctx: CheckCtx,
+): TypeNode | null | "not_matched" {
+  for (const reg of memberRegistrations) {
+    if (reg.matches(receiverType)) return reg.handle(receiverType, member, line, col, ctx);
   }
   return "not_matched";
 }
