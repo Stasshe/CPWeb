@@ -384,7 +384,7 @@ class Interpreter extends InterpreterEvaluator {
     line: number,
   ): Array<Extract<RuntimeValue, { kind: "reference" }>> {
     const value = this.ensureInitialized(this.evaluateExpr(source), line, "value");
-    if (value.kind === "array" && isVectorType(value.type)) {
+    if (value.kind === "object" && value.objectKind === "vector") {
       const elementType = vectorElementType(value.type);
       const store = this.arrays.get(value.ref);
       if (store === undefined) {
@@ -410,7 +410,7 @@ class Interpreter extends InterpreterEvaluator {
         target: { kind: "array", ref: value.ref, index, type: elementType },
       }));
     }
-    if (value.kind === "map") {
+    if (value.kind === "object" && value.objectKind === "map") {
       if (
         source.kind !== "Identifier" &&
         source.kind !== "IndexExpr" &&
@@ -426,7 +426,8 @@ class Interpreter extends InterpreterEvaluator {
           referredType: pairType(mapKeyType(value.type), mapValueType(value.type)),
         },
         target: {
-          kind: "map",
+          kind: "object",
+          objectKind: "map",
           parent,
           entryIndex,
           type: pairType(mapKeyType(value.type), mapValueType(value.type)),

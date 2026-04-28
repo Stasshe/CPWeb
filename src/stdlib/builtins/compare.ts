@@ -57,12 +57,8 @@ export function compareValues(
       );
     case "array":
       return fail("array comparison is not supported", line);
-    case "map":
-      return fail("map comparison is not supported", line);
-    case "pair":
-      return fail("pair comparison is not supported", line);
-    case "tuple":
-      return fail("tuple comparison is not supported", line);
+    case "object":
+      return fail(`${left.objectKind} comparison is not supported`, line);
     case "reference":
       return fail("reference comparison is not supported", line);
   }
@@ -99,23 +95,31 @@ export function sameLocation(left: RuntimeLocation | null, right: RuntimeLocatio
       return right.kind === "binding" && left.scope === right.scope && left.name === right.name;
     case "array":
       return right.kind === "array" && left.ref === right.ref && left.index === right.index;
-    case "tuple":
-      return (
-        right.kind === "tuple" &&
-        left.index === right.index &&
-        sameLocation(left.parent, right.parent)
-      );
+    case "object":
+      if (right.kind !== "object" || left.objectKind !== right.objectKind) {
+        return false;
+      }
+      if (left.objectKind === "tuple") {
+        if (right.objectKind !== "tuple") {
+          return false;
+        }
+        return left.index === right.index && sameLocation(left.parent, right.parent);
+      }
+      if (left.objectKind === "map") {
+        if (right.objectKind !== "map") {
+          return false;
+        }
+        return (
+          left.entryIndex === right.entryIndex &&
+          left.access === right.access &&
+          sameLocation(left.parent, right.parent)
+        );
+      }
+      return false;
     case "string":
       return (
         right.kind === "string" &&
         left.index === right.index &&
-        sameLocation(left.parent, right.parent)
-      );
-    case "map":
-      return (
-        right.kind === "map" &&
-        left.entryIndex === right.entryIndex &&
-        left.access === right.access &&
         sameLocation(left.parent, right.parent)
       );
   }

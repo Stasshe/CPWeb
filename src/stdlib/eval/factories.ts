@@ -25,7 +25,8 @@ export function evalMakePair(args: ExprNode[], line: number, ctx: EvalCtx): Runt
     line,
   );
   return {
-    kind: "pair",
+    kind: "object",
+    objectKind: "pair",
     type: {
       ...pairType(ctx.runtimeValueToType(first, line), ctx.runtimeValueToType(second, line)),
     },
@@ -44,7 +45,8 @@ export function evalMakeTuple(args: ExprNode[], line: number, ctx: EvalCtx): Run
     ctx.ensureNotVoid(ctx.ensureInitialized(ctx.evaluateExpr(arg), line, "value"), line),
   );
   return {
-    kind: "tuple",
+    kind: "object",
+    objectKind: "tuple",
     type: { ...tupleType(values.map((v) => ctx.runtimeValueToType(v, line))) },
     values,
   };

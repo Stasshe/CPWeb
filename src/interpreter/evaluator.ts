@@ -38,6 +38,7 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       expectInt: (v, line) => this.expectInt(v, line),
       expectBool: (v, line) => this.expectBool(v, line),
       expectArray: (v, line) => this.expectArray(v, line),
+      expectVector: (v, line) => this.expectVector(v, line),
       ensureInitialized: (v, line, what) => this.ensureInitialized(v, line, what),
       ensureNotVoid: (v, line) =>
         this.ensureNotVoid(v as Exclude<RuntimeValue, { kind: "uninitialized" }>, line),
@@ -52,7 +53,7 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       resolveAssignTargetLocation: (target, line) => this.resolveAssignTargetLocation(target, line),
       readLocation: (loc, line) => this.readLocation(loc, line),
       writeLocation: (loc, value, line) => this.writeLocation(loc, value, line),
-      allocVector: (type, values) => this.allocateArray(type, values),
+      allocVector: (type, values) => this.allocateVector(type, values),
       arrays: this.arrays,
       findOrInsertMapEntry: (mapValue, key, line) => this.findOrInsertMapEntry(mapValue, key, line),
     };
@@ -358,14 +359,26 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     }
     const parent = this.resolveAssignTargetLocation(receiverExpr, line);
     const receiver = this.readLocation(parent, line);
-    if (receiver.kind !== "pair") {
+    if (receiver.kind !== "object" || receiver.objectKind !== "pair") {
       this.fail("type mismatch: expected pair", line);
     }
     if (member === "first") {
-      return { kind: "pair", parent, member, type: receiver.type.templateArgs[0] as TypeNode };
+      return {
+        kind: "object",
+        objectKind: "pair",
+        parent,
+        member,
+        type: receiver.type.templateArgs[0] as TypeNode,
+      };
     }
     if (member === "second") {
-      return { kind: "pair", parent, member, type: receiver.type.templateArgs[1] as TypeNode };
+      return {
+        kind: "object",
+        objectKind: "pair",
+        parent,
+        member,
+        type: receiver.type.templateArgs[1] as TypeNode,
+      };
     }
     this.fail(`unknown pair member '${member}'`, line);
   }
@@ -391,7 +404,7 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         index: Number(index),
       };
     }
-    if (targetValue.kind === "map") {
+    if (targetValue.kind === "object" && targetValue.objectKind === "map") {
       if (
         targetExpr.kind !== "Identifier" &&
         targetExpr.kind !== "IndexExpr" &&
@@ -414,7 +427,8 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       );
       const entryIndex = this.findOrInsertMapEntry(targetValue, keyValue, line);
       return {
-        kind: "map",
+        kind: "object",
+        objectKind: "map",
         parent,
         entryIndex,
         type: mapValueType(targetValue.type),
@@ -422,7 +436,10 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       };
     }
     const index = this.expectInt(this.evaluateExpr(indexExpr), line).value;
-    const target = this.expectArray(targetValue, line);
+    const target =
+      targetValue.kind === "object" && targetValue.objectKind === "vector"
+        ? targetValue
+        : this.expectArray(targetValue, line);
     const store = this.arrays.get(target.ref);
     if (store === undefined) {
       this.fail("invalid array reference", line);
@@ -437,7 +454,12 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       kind: "array",
       ref: target.ref,
       index: Number(index),
-      type: isVectorType(store.type) ? vectorElementType(store.type) : store.type.elementType,
+      type:
+        target.kind === "object"
+          ? vectorElementType(target.type)
+          : isVectorType(store.type)
+            ? vectorElementType(store.type)
+            : store.type.elementType,
     };
   }
 
@@ -451,7 +473,7 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     }
     const parent = this.resolveAssignTargetLocation(tupleExpr, line);
     const tupleValue = this.readLocation(parent, line);
-    if (tupleValue.kind !== "tuple") {
+    if (tupleValue.kind !== "object" || tupleValue.objectKind !== "tuple") {
       this.fail("type mismatch: expected tuple", line);
     }
     const elementType = tupleElementTypes(tupleValue.type)[index];
@@ -461,7 +483,7 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         line,
       );
     }
-    return { kind: "tuple", parent, index, type: elementType };
+    return { kind: "object", objectKind: "tuple", parent, index, type: elementType };
   }
 
   protected getIndexedValue(targetExpr: ExprNode, indexExpr: ExprNode, line: number): RuntimeValue {
@@ -716,7 +738,7 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
   }
 
   protected findOrInsertMapEntry(
-    mapValue: Extract<RuntimeValue, { kind: "map" }>,
+    mapValue: Extract<RuntimeValue, { kind: "object"; objectKind: "map" }>,
     key: Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>,
     line: number,
   ): number {

@@ -211,6 +211,17 @@ export abstract class InterpreterRuntimeCore {
     return initialized;
   }
 
+  protected expectVector(
+    value: RuntimeValue,
+    line: number,
+  ): Extract<RuntimeValue, { kind: "object"; objectKind: "vector" }> {
+    const initialized = this.ensureInitialized(value, line, "value");
+    if (initialized.kind !== "object" || initialized.objectKind !== "vector") {
+      this.fail("type mismatch: expected vector", line);
+    }
+    return initialized;
+  }
+
   protected ensureInitialized(
     value: RuntimeValue,
     line: number,
@@ -395,12 +406,19 @@ export abstract class InterpreterRuntimeCore {
   ): void;
 
   protected allocateArray(
-    type: import("@/types").ArrayTypeNode | import("@/types").VectorTypeNode,
+    type: import("@/types").ArrayTypeNode,
     values: RuntimeValue[],
   ): RuntimeValue {
     const ref = this.nextArrayRef;
     this.nextArrayRef += 1;
     this.arrays.set(ref, { type, values });
     return { kind: "array", ref, type };
+  }
+
+  protected allocateVector(type: import("@/types").VectorTypeNode, values: RuntimeValue[]): RuntimeValue {
+    const ref = this.nextArrayRef;
+    this.nextArrayRef += 1;
+    this.arrays.set(ref, { type, values });
+    return { kind: "object", objectKind: "vector", ref, type };
   }
 }

@@ -7,6 +7,10 @@ export interface EvalCtx {
   expectInt(value: RuntimeValue, line: number): Extract<RuntimeValue, { kind: "int" }>;
   expectBool(value: RuntimeValue, line: number): Extract<RuntimeValue, { kind: "bool" }>;
   expectArray(value: RuntimeValue, line: number): Extract<RuntimeValue, { kind: "array" }>;
+  expectVector(
+    value: RuntimeValue,
+    line: number,
+  ): Extract<RuntimeValue, { kind: "object"; objectKind: "vector" }>;
   ensureInitialized(
     value: RuntimeValue,
     line: number,
@@ -28,7 +32,7 @@ export interface EvalCtx {
   allocVector(type: VectorTypeNode, values: RuntimeValue[]): RuntimeValue;
   arrays: Map<number, { type: TypeNode; values: RuntimeValue[] }>;
   findOrInsertMapEntry(
-    mapValue: Extract<RuntimeValue, { kind: "map" }>,
+    mapValue: Extract<RuntimeValue, { kind: "object"; objectKind: "map" }>,
     key: Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>,
     line: number,
   ): number;

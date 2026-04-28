@@ -45,7 +45,12 @@ function expectVectorRange(
   }
   const beginValue = ctx.ensureInitialized(ctx.evaluateExpr(beginExpr), line, "iterator");
   const endValue = ctx.ensureInitialized(ctx.evaluateExpr(endExpr), line, "iterator");
-  if (beginValue.kind !== "iterator" || endValue.kind !== "iterator") {
+  if (
+    beginValue.kind !== "object" ||
+    beginValue.objectKind !== "iterator" ||
+    endValue.kind !== "object" ||
+    endValue.objectKind !== "iterator"
+  ) {
     ctx.fail(`${callee} requires vector iterators`, line);
   }
   if (beginValue.ref !== endValue.ref) {

@@ -415,6 +415,7 @@ export type DebugValueView = {
     | "map"
     | "pair"
     | "tuple"
+    | "vector"
     | "array"
     | "iterator"
     | "pointer"

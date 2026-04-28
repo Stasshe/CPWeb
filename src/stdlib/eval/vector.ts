@@ -36,7 +36,7 @@ export function evalVectorConstructor(
 }
 
 export function evalVectorMethod(
-  receiver: Extract<RuntimeValue, { kind: "array" }>,
+  receiver: Extract<RuntimeValue, { kind: "object"; objectKind: "vector" }>,
   method: string,
   args: ExprNode[],
   vStore: { type: VectorTypeNode; values: RuntimeValue[] },
@@ -61,18 +61,15 @@ registerTemplateCall("vector", (expr, ctx) => {
 });
 
 registerMethodHandler({
-  matches: (v) => v.kind === "array",
+  matches: (v) => v.kind === "object" && v.objectKind === "vector",
   handle: (receiver, method, args, line, ctx) => {
-    const arrayValue = ctx.expectArray(receiver, line);
-    const store = ctx.arrays.get(arrayValue.ref);
+    const vectorValue = ctx.expectVector(receiver, line);
+    const store = ctx.arrays.get(vectorValue.ref);
     if (store === undefined) {
       return ctx.fail("invalid array reference", line);
     }
-    if (!isVectorType(store.type)) {
-      ctx.fail(`method '${method}' is not supported for fixed array`, line);
-    }
     return evalVectorMethod(
-      arrayValue,
+      vectorValue,
       method,
       args,
       store as { type: VectorTypeNode; values: RuntimeValue[] },
@@ -83,7 +80,7 @@ registerMethodHandler({
 });
 
 function applyMethod(
-  receiver: Extract<RuntimeValue, { kind: "array" }>,
+  receiver: Extract<RuntimeValue, { kind: "object"; objectKind: "vector" }>,
   method: VectorMethodName,
   args: ExprNode[],
   vStore: { type: VectorTypeNode; values: RuntimeValue[] },
@@ -92,10 +89,17 @@ function applyMethod(
 ): RuntimeValue {
   switch (method) {
     case "begin":
-      return { kind: "iterator", type: iteratorType(vStore.type), ref: receiver.ref, index: 0 };
+      return {
+        kind: "object",
+        objectKind: "iterator",
+        type: iteratorType(vStore.type),
+        ref: receiver.ref,
+        index: 0,
+      };
     case "end":
       return {
-        kind: "iterator",
+        kind: "object",
+        objectKind: "iterator",
         type: iteratorType(vStore.type),
         ref: receiver.ref,
         index: vStore.values.length,

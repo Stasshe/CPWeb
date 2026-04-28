@@ -25,7 +25,9 @@ function getTupleElementValue(
   ctx: EvalCtx,
 ): RuntimeValue {
   const tupleValue = ctx.ensureInitialized(ctx.evaluateExpr(tupleExpr), line, "tuple");
-  if (tupleValue.kind !== "tuple") ctx.fail("type mismatch: expected tuple", line);
+  if (tupleValue.kind !== "object" || tupleValue.objectKind !== "tuple") {
+    ctx.fail("type mismatch: expected tuple", line);
+  }
   const elementTypes = tupleElementTypes(tupleValue.type);
   if (index >= elementTypes.length || index < 0) {
     ctx.fail(

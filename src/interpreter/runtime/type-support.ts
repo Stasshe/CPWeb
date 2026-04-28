@@ -50,18 +50,20 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       this.fail("element type cannot be void", line);
     }
     if (isVectorType(type)) {
-      return this.allocateArray(type, []);
+      return this.allocateVector(type, []);
     }
     if (isMapType(type)) {
       return {
-        kind: "map",
+        kind: "object",
+        objectKind: "map",
         type,
         entries: [],
       };
     }
     if (isPairType(type)) {
       return {
-        kind: "pair",
+        kind: "object",
+        objectKind: "pair",
         type,
         first: this.defaultValueForType(pairFirstType(type), line),
         second: this.defaultValueForType(pairSecondType(type), line),
@@ -69,7 +71,8 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
     }
     if (isTupleType(type)) {
       return {
-        kind: "tuple",
+        kind: "object",
+        objectKind: "tuple",
         type,
         values: tupleElementTypes(type).map((elementType) =>
           this.defaultValueForType(elementType, line),
@@ -133,11 +136,12 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       if (value.kind === "uninitialized") {
         return { kind: "uninitialized", expectedType: type };
       }
-      if (value.kind !== "pair") {
+      if (value.kind !== "object" || value.objectKind !== "pair") {
         this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
       }
       return {
-        kind: "pair",
+        kind: "object",
+        objectKind: "pair",
         type,
         first: this.assertType(pairFirstType(type), value.first, line),
         second: this.assertType(pairSecondType(type), value.second, line),
@@ -148,11 +152,12 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       if (value.kind === "uninitialized") {
         return { kind: "uninitialized", expectedType: type };
       }
-      if (value.kind !== "map") {
+      if (value.kind !== "object" || value.objectKind !== "map") {
         this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
       }
       return {
-        kind: "map",
+        kind: "object",
+        objectKind: "map",
         type,
         entries: value.entries.map((entry) => ({
           key: this.assertType(mapKeyType(type), entry.key, line),
@@ -165,7 +170,7 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       if (value.kind === "uninitialized") {
         return { kind: "uninitialized", expectedType: type };
       }
-      if (value.kind !== "tuple") {
+      if (value.kind !== "object" || value.objectKind !== "tuple") {
         this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
       }
       const elementTypes = tupleElementTypes(type);
@@ -176,7 +181,8 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
         );
       }
       return {
-        kind: "tuple",
+        kind: "object",
+        objectKind: "tuple",
         type,
         values: elementTypes.map((elementType, index) =>
           this.assertType(elementType, value.values[index] as RuntimeValue, line),
@@ -187,8 +193,15 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       if (value.kind === "uninitialized") {
         return { kind: "uninitialized", expectedType: type };
       }
-      if (value.kind !== "iterator" || !this.sameType(type, value.type)) {
-        const actualType = value.kind === "iterator" ? this.typeToRuntimeString(value.type) : value.kind;
+      if (
+        value.kind !== "object" ||
+        value.objectKind !== "iterator" ||
+        !this.sameType(type, value.type)
+      ) {
+        const actualType =
+          value.kind === "object" && value.objectKind === "iterator"
+            ? this.typeToRuntimeString(value.type)
+            : value.kind;
         this.fail(
           `cannot convert '${actualType}' to '${this.typeToRuntimeString(type)}'`,
           line,
@@ -197,12 +210,21 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       return value;
     }
 
-    if (value.kind !== "array") {
-      this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
+    if (isVectorType(type)) {
+      if (value.kind !== "object" || value.objectKind !== "vector") {
+        this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
+      }
+      if (!this.sameType(type, value.type)) {
+        this.fail(
+          `cannot convert '${this.typeToRuntimeString(value.type)}' to '${this.typeToRuntimeString(type)}'`,
+          line,
+        );
+      }
+      return value;
     }
 
-    if (isVectorType(type) && !isVectorType(value.type)) {
-      this.fail("cannot convert 'array' to 'vector'", line);
+    if (value.kind !== "array") {
+      this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
     }
 
     if (isArrayType(type) && !isArrayType(value.type)) {
@@ -256,7 +278,7 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
     }
     return {
       name,
-      kind: value.kind,
+      kind: value.kind === "object" ? value.objectKind : value.kind,
       value: this.serializeValue(value),
     };
   }
@@ -264,23 +286,28 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
   protected serializeValue(value: RuntimeValue): string {
     switch (value.kind) {
       case "array":
-        return `<${isVectorType(value.type) ? "vector" : "array"}#${value.ref}>`;
-      case "iterator":
-        return `<iterator:${typeToString(value.type)}@${value.ref}:${value.index}>`;
+        return `<array#${value.ref}>`;
+      case "object":
+        switch (value.objectKind) {
+          case "vector":
+            return `<vector#${value.ref}>`;
+          case "iterator":
+            return `<iterator:${typeToString(value.type)}@${value.ref}:${value.index}>`;
+          case "pair":
+            return `(${this.serializeValue(value.first)}, ${this.serializeValue(value.second)})`;
+          case "map":
+            return `{${value.entries
+              .map((entry) => `${this.serializeValue(entry.key)}: ${this.serializeValue(entry.value)}`)
+              .join(", ")}}`;
+          case "tuple":
+            return `(${value.values.map((element) => this.serializeValue(element)).join(", ")})`;
+        }
       case "pointer":
         return value.target === null ? "nullptr" : `<pointer:${typeToString(value.pointeeType)}>`;
       case "reference":
         return this.serializeValue(this.readLocation(value.target, this.currentLine));
       case "uninitialized":
         return `<uninitialized:${typeToString(value.expectedType)}>`;
-      case "pair":
-        return `(${this.serializeValue(value.first)}, ${this.serializeValue(value.second)})`;
-      case "map":
-        return `{${value.entries
-          .map((entry) => `${this.serializeValue(entry.key)}: ${this.serializeValue(entry.value)}`)
-          .join(", ")}}`;
-      case "tuple":
-        return `(${value.values.map((element) => this.serializeValue(element)).join(", ")})`;
       case "bool":
         return value.value ? "true" : "false";
       default:

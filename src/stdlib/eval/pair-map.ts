@@ -6,7 +6,7 @@ import { getPairMemberSpec } from "@/stdlib/pair-members";
 import type { ExprNode } from "@/types";
 
 export function evalPairMember(
-  receiver: Extract<RuntimeValue, { kind: "pair" }>,
+  receiver: Extract<RuntimeValue, { kind: "object"; objectKind: "pair" }>,
   member: string,
   line: number,
   ctx: EvalCtx,
@@ -17,7 +17,7 @@ export function evalPairMember(
 }
 
 export function evalMapMethod(
-  receiver: Extract<RuntimeValue, { kind: "map" }>,
+  receiver: Extract<RuntimeValue, { kind: "object"; objectKind: "map" }>,
   method: string,
   args: ExprNode[],
   line: number,
@@ -32,13 +32,24 @@ export function evalMapMethod(
 }
 
 registerMemberHandler({
-  matches: (v) => v.kind === "pair",
+  matches: (v) => v.kind === "object" && v.objectKind === "pair",
   handle: (receiver, member, line, ctx) =>
-    evalPairMember(receiver as Extract<RuntimeValue, { kind: "pair" }>, member, line, ctx),
+    evalPairMember(
+      receiver as Extract<RuntimeValue, { kind: "object"; objectKind: "pair" }>,
+      member,
+      line,
+      ctx,
+    ),
 });
 
 registerMethodHandler({
-  matches: (v) => v.kind === "map",
+  matches: (v) => v.kind === "object" && v.objectKind === "map",
   handle: (receiver, method, args, line, ctx) =>
-    evalMapMethod(receiver as Extract<RuntimeValue, { kind: "map" }>, method, args, line, ctx),
+    evalMapMethod(
+      receiver as Extract<RuntimeValue, { kind: "object"; objectKind: "map" }>,
+      method,
+      args,
+      line,
+      ctx,
+    ),
 });
