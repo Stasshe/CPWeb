@@ -13,6 +13,7 @@
 ## テンプレート実装
 
 - 完全なテンプレート実装は個別の特別扱い追加ではなく、`ai-docs/TEMPLATE_ROADMAP.md` の段階に沿って進める_
+- 非 `tuple` の特例は無計画に増やさず、まず `stdlib/metadata.ts` や stdlib handler へ吸収できないかを確認する
 
 ## ディレクトリ構造
 
@@ -49,9 +50,11 @@ src/
 │   ├── type-compat.ts
 │   └── type-utils.ts
 ├── stdlib/
-│   ├── registry.ts
+│   ├── metadata.ts
 │   ├── template-exprs.ts
 │   ├── template-types.ts
+│   ├── check-registry.ts
+│   ├── eval-registry.ts
 │   └── builtins/
 │       ├── index.ts
 │       └── compare.ts

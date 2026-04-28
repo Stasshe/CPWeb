@@ -67,9 +67,10 @@ export interface EvalCtx {
 
 | ファイル | 責務 |
 |---|---|
-| `registry.ts` | 組み込み関数・テンプレートのメタデータ登録・検索 |
+| `metadata.ts` | 組み込み関数・テンプレート型・template 風 builtin の metadata 登録・検索 |
 | `template-exprs.ts` | テンプレート式ユーティリティ（`isTemplateNamed`, `getSingleTypeTemplateArg` 等） |
 | `template-types.ts` | テンプレート型アクセサ（`vectorElementType`, `mapKeyType` 等） |
+| `check-registry.ts` / `eval-registry.ts` | stdlib handler の登録・ディスパッチ |
 | `vector-methods.ts` / `map-methods.ts` | コンテナメソッド metadata |
 | `builtins/compare.ts` | 値比較純関数（評価器文脈不要） |
 | `eval-context.ts` | `EvalCtx` インターフェース定義（stdlib eval 関数が受け取る評価器コンテキスト） |
@@ -87,12 +88,18 @@ export interface EvalCtx {
 | `check/methods.ts` | pair / map メソッドの型検査実装 |
 | `check/range-algorithms.ts` | sort / reverse / fill の型検査実装 |
 
-### stdlib の位置づけ（Phase 4 完了）
+### stdlib の位置づけ（core 直書き解消後の現状）
 
 - `stdlib/eval/` が vector / sort / get<N> などの **振る舞い本体** を保持する
 - `stdlib/check/` が同機能の **型検査本体** を保持する
 - `semantic/builtin-checker.ts` と `interpreter/builtin-eval.ts` は **薄いディスパッチャ** に徹する
 - コアへの intrinsic 直書きは解消済み
+
+補足:
+
+- 上の「コア」は `semantic/` と `interpreter/` の中核を指す
+- stdlib handler 内にはまだ `pair.first` / `pair.second` / `map.size()` や range algorithm の AST 形判定など、完全 template 化前の意図的特例が残る
+- `vector.begin/end` は `vector-methods.ts` の metadata で管理し、checker/evaluator の専用分岐は削減済み
 
 ### EvalCtx パターン（stdlib 版）
 
@@ -102,10 +109,9 @@ export interface EvalCtx {
 
 ## 新規組み込み追加手順
 
-1. `stdlib/registry.ts` にメタデータ登録
-2. `stdlib/check/<category>.ts` に型検査実装追加
-3. `stdlib/eval/<category>.ts` に評価実装追加
-4. `semantic/builtin-checker.ts` のディスパッチに追加
-5. `interpreter/builtin-eval.ts` のディスパッチに追加
-6. `tests/` にテスト追加
-7. `SPECIFICATION.md` 更新
+1. `stdlib/metadata.ts` または `stdlib/*-methods.ts` に metadata を追加
+2. `stdlib/check/<category>.ts` に型検査実装を追加し、必要なら `check-registry.ts` へ登録する
+3. `stdlib/eval/<category>.ts` に評価実装を追加し、必要なら `eval-registry.ts` へ登録する
+4. `semantic/builtin-checker.ts` / `interpreter/builtin-eval.ts` の既存 dispatcher で到達可能か確認する
+5. `tests/` にテスト追加
+6. `SPECIFICATION.md` 更新

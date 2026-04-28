@@ -21,9 +21,10 @@
 
 現状は以下の制約がある。
 
-- parser が `vector` / `map` / `pair` / `tuple` を名前で分岐している
-- validator が `make_pair` / `make_tuple` / `greater` / `sort` を名前で分岐している
-- evaluator が標準ライブラリ関数を名前で分岐している
+- parser が `vector` / `map` / `pair` / `tuple` を既知名として分岐している
+- range algorithm が `.begin()` / `.end()` の AST 形を直接見ている
+- `pair.first` / `pair.second` / `map.size()` が intrinsic のまま残っている
+- validator / evaluator は薄い dispatcher 化されたが、stdlib handler 自体にはまだ個別 intrinsic が残っている
 - AST に「テンプレート宣言」「テンプレート引数」「依存名」「実体化済みシンボル」の概念がない
 - 型が `VectorType` / `MapType` / `PairType` / `TupleType` の専用ノードで固定されている
 
@@ -44,6 +45,7 @@
 
 - テンプレート関連の既知名が `src/stdlib/` 配下へ集約される
 - 新しいテンプレート対応を追加するとき、名前の起点が複数箇所に散らない
+- `vector.begin/end` のようなメソッド checker/evaluator 直書きが method metadata へ移る
 
 ### Phase 2: Generic Template AST
 
@@ -85,6 +87,11 @@
 
 - `src/stdlib/` にライブラリ定義と runtime hooks を分離
 - `sort` や `vector::push_back` のような操作を intrinsic と method metadata へ寄せる
+
+現状メモ:
+
+- `vector.begin/end` の引数・戻り値判定は method metadata へ移行済み
+- ただし `sort` / `reverse` / `fill` の range 判定、`pair.first` / `pair.second`、`map.size()` はなお意図的な特例として残る
 
 ### Phase 5: Compatibility Expansion
 

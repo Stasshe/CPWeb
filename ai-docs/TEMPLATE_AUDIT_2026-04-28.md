@@ -11,7 +11,7 @@
 ### Phase 1: Name And Library Isolation
 
 - ほぼ達成
-- `src/stdlib/registry.ts`
+- `src/stdlib/metadata.ts`
 - `src/stdlib/template-exprs.ts`
 - `src/stdlib/template-types.ts`
 - `src/stdlib/vector-methods.ts`
@@ -57,6 +57,11 @@
 - `sort` / `reverse` / `fill`
 - `pair.first` / `pair.second`
 - `map.size()`
+
+追記:
+
+- `vector.begin/end` の checker/evaluator 直書きは `vector-methods.ts` の metadata へ移行済み
+- ただし range algorithm 側はまだ `.begin()` / `.end()` の AST 形を直接見ている
 
 つまり「特別扱いがコアに残っていないか」という観点では、まだ残っている。方向性は改善しているが、phase 4 完了とは言えない。
 

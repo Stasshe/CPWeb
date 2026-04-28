@@ -19,7 +19,7 @@
 |---|---|
 | 動的メモリ（`malloc`, `new`, `free`, `delete`） | |
 | 構造体・クラス（`struct`, `class`） | |
-| テンプレート（`template<>`） | クラステンプレート・変数テンプレート・明示テンプレート実引数呼び出し（`f<int>(x)`）・汎用 template-id は非対応。関数テンプレート宣言と、実引数からの型推論による呼び出しのみ限定対応。`vector<T>`、`map<K,V>`、`pair<T,U>`、`tuple<T...>`、`make_pair`、`make_tuple`、`get<I>`、`greater<int>()` / `greater<>()` などの標準ライブラリ風記法も引き続きサポートするが、内部実装は intrinsic / metadata による特例を含む |
+| テンプレート（`template<>`） | クラステンプレート・変数テンプレート・明示テンプレート実引数呼び出し（`f<int>(x)`）・汎用 template-id は非対応。関数テンプレート宣言と、実引数からの型推論による呼び出しのみ限定対応。`vector<T>`、`map<K,V>`、`pair<T,U>`、`tuple<T...>`、`make_pair`、`make_tuple`、`get<I>`、`greater<int>()` / `greater<>()` などの標準ライブラリ風記法も引き続きサポートする。内部実装は `stdlib` metadata へ集約を進めているが、現時点では `tuple` に加えて parser 既知名、`VectorDecl`、range algorithm の AST 形判定、`pair.first` / `pair.second` / `map.size()` などの意図的な特例を残す |
 | 関数ポインタ | |
 | 名前空間（`namespace`） | `using namespace std;` のみ特別扱いで許可 |
 | プリプロセッサ | `#include <bits/stdc++.h>`、`#include <iostream>`、`#include <vector>`、`#include <map>`、`#define` に対応 |
@@ -112,6 +112,8 @@ vector<vector<int>> g;    // ネスト vector も可
 | `v.back()` | 末尾要素の参照 |
 | `v.empty()` | 空かどうか（`bool`） |
 | `v.clear()` | 全要素削除 |
+| `v.begin()` | `v` 全体を指す range 始端。現状は `sort` / `reverse` / `fill` の完全範囲指定専用 |
+| `v.end()` | `v` 全体を指す range 終端。現状は `sort` / `reverse` / `fill` の完全範囲指定専用 |
 | `v[i]` | 添字アクセス（範囲外は実行時エラー） |
 | `v.resize(n)` | リサイズ（縮小時は切り捨て、拡大時は型ごとの既定値で埋める） |
 
@@ -149,7 +151,7 @@ cout << p.first << " " << p.second << "\n";
 - `pair<T, U>` を型としてサポートする
 - 生成は `make_pair(a, b)` をサポートする
 - メンバーアクセスとして `p.first` と `p.second` をサポートする
-- 型表現は一般化されているが、メンバーアクセスや生成はまだ intrinsic ベースの特例実装を含む
+- 型表現は一般化されているが、メンバーアクセス `p.first` / `p.second` と生成はまだ stdlib intrinsic ベースの特例実装を含む
 - 構造化束縛（`auto [x, y]`）は非対応
 
 ### 3.7 `tuple` / 多重戻り値
@@ -170,7 +172,7 @@ int main() {
 - 要素アクセスは `get<I>(t)` をサポートする。`I` は 0 始まりの非負整数リテラル
 - `get<I>(t)` は lvalue として使える。代入や `swap` の対象にもできる
 - 関数の戻り値として `tuple<...>` を許可し、多重戻り値は tuple を返す形で表現する
-- 型表現は一般化されているが、`get<I>` や生成はまだ intrinsic ベースの特例実装を含む
+- 型表現は一般化されているが、`get<I>` や生成はまだ stdlib intrinsic ベースの特例実装を含む
 - 構造化束縛（`auto [x, y]`）は非対応
 
 ### 3.8 関数テンプレート（限定対応）
@@ -498,11 +500,12 @@ cerr << "debug: " << x << "\n";
 - `abs` / `max` / `min` は現在の実装では整数専用
 - `swap` の引数は lvalue（変数または添字アクセス）でなければならない
 - `make_pair` はちょうど 2 引数、`make_tuple` は 1 引数以上を要求する
-- `sort` / `reverse` / `fill` は `vector` に対する完全範囲 `v.begin(), v.end()` のみ対応
+- `sort` / `reverse` / `fill` は `vector` に対する完全範囲 `v.begin(), v.end()` のみ対応し、現在は `.begin()` / `.end()` の AST 形を直接見て range と判定する
 - `sort` の comparator は `greater<int>()` と `greater<>()` に対応する。後者は前処理段階で `greater<int>()` に正規化する
 - `greater<int>()` は一般テンプレートではなく、降順ソート指定のための組み込み特例構文
 - `get<I>(x)` も一般関数テンプレートではなく、tuple 要素アクセスのための組み込み特例構文
-- `sort` 等の `begin()` / `end()` は iterator オブジェクトではなく、メソッド metadata と evaluator 特例で実装する
+- `vector.begin()` / `vector.end()` 自体の引数・戻り値判定は method metadata で扱うが、返り値は独立 iterator ではなく receiver の `vector` 値そのもの
+- `map.size()` は現在も stdlib intrinsic 実装で、他の `map` メソッドは未対応
 - 固定長配列への `sort`（`sort(a, a + n)`）は将来対応
 
 ---
@@ -817,7 +820,7 @@ ident         = letter { letter | digit | "_" } ;
 type ProgramNode = {
   kind: "Program"
   globals: GlobalDeclNode[]
-  functions: FunctionDeclNode[]
+  functions: (FunctionDeclNode | TemplateFunctionDeclNode)[]
 }
 
 type GlobalDeclNode = VarDeclNode | ArrayDeclNode | VectorDeclNode
@@ -848,7 +851,8 @@ type ExprNode =
   | AddressOfExprNode
   | DerefExprNode
   | CallExprNode
-  | TupleGetExprNode
+  | TemplateIdExprNode
+  | TemplateCallExprNode
   | MethodCallExprNode
   | IndexExprNode
   | IdentifierExprNode
@@ -858,7 +862,30 @@ type AssignTargetNode =
   | IdentifierExprNode
   | IndexExprNode
   | DerefExprNode
-  | TupleGetExprNode
+  | TemplateCallExprNode
+
+type TemplateFunctionDeclNode = {
+  kind: "TemplateFunctionDecl"
+  typeParams: string[]
+  returnType: TypeNode
+  name: string
+  params: ParamNode[]
+  body: BlockStmtNode
+}
+
+type TemplateIdExprNode = {
+  kind: "TemplateIdExpr"
+  template: string
+  templateArgs: TemplateArgNode[]
+}
+
+type TemplateArgNode = TypeTemplateArgNode | IntTemplateArgNode
+
+type TemplateCallExprNode = {
+  kind: "TemplateCallExpr"
+  callee: TemplateIdExprNode
+  args: ExprNode[]
+}
 
 type LiteralExprNode = {
   kind: "Literal"
@@ -891,6 +918,10 @@ type LiteralExprNode = {
 - 一般の `auto` 変数宣言、構造化束縛
 - 参照戻り値
 - 固定長配列への `sort(a, a + n)`
+- parser における `vector` / `map` / `pair` / `tuple` の既知 template 名依存
+- `vector` 宣言だけ `VectorDeclNode` を使う専用 AST
+- `sort` / `reverse` / `fill` の range 判定における `.begin()` / `.end()` AST 形依存
+- `pair.first` / `pair.second` / `map.size()` の stdlib intrinsic 実装
 - 条件付きプリプロセッサ（`#if`, `#ifdef`, `#ifndef`, `#else`, `#endif`）
 - 条件付きブレークポイント
 - 巻き戻し実行
@@ -902,7 +933,7 @@ type LiteralExprNode = {
 ## 16. 設計上の原則
 
 1. **競プロ断片の再現を優先する**：C++ 全体ではなく、競技プログラミングで頻出の表面記法を安全に再現する
-2. **テンプレートは限定実装とし、標準ライブラリ風記法は intrinsic で補う**：関数テンプレートは型推論付き呼び出しに限ってサポートし、`vector<T>`、`pair<T,U>`、`tuple<T...>`、`get<I>`、`greater<int>()` などはこの方針で扱う
+2. **テンプレートは限定実装とし、標準ライブラリ風記法は metadata と intrinsic を併用して補う**：関数テンプレートは型推論付き呼び出しに限ってサポートし、`vector<T>`、`pair<T,U>`、`tuple<T...>`、`get<I>`、`greater<int>()` などはこの方針で扱う。特例は `stdlib` 配下へ集約するが、完全一般化の前段階として一部は意図的に残す
 3. **エラーは結果として返す**：外部 API では `status: "error"` とエラー情報で伝達する
 4. **状態は可視化しやすく保つ**：デバッグ UI 連携を前提に、配列実体・スコープ・現在位置を明示的に保持する
 5. **C++ と完全一致しない点は明文化する**：`vector` の参照セマンティクス、`endl` の no-op flush、再開時の再実行などは仕様として記述する
