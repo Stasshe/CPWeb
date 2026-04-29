@@ -17,26 +17,40 @@ export type ArrayTypeNode = {
   elementType: TypeNode;
 };
 
-export type VectorTypeNode = {
-  kind: "VectorType";
-  elementType: TypeNode;
+export type NamedTypeNode = {
+  kind: "NamedType";
+  name: string;
 };
 
-export type MapTypeNode = {
-  kind: "MapType";
-  keyType: TypeNode;
-  valueType: TypeNode;
+export type TemplateInstanceTypeNode = {
+  kind: "TemplateInstanceType";
+  template: NamedTypeNode;
+  templateArgs: TypeNode[];
 };
 
-export type PairTypeNode = {
-  kind: "PairType";
-  firstType: TypeNode;
-  secondType: TypeNode;
+export type VectorTypeNode = TemplateInstanceTypeNode & {
+  template: { kind: "NamedType"; name: "vector" };
+  templateArgs: [TypeNode];
 };
 
-export type TupleTypeNode = {
-  kind: "TupleType";
-  elementTypes: TypeNode[];
+export type MapTypeNode = TemplateInstanceTypeNode & {
+  template: { kind: "NamedType"; name: "map" };
+  templateArgs: [TypeNode, TypeNode];
+};
+
+export type PairTypeNode = TemplateInstanceTypeNode & {
+  template: { kind: "NamedType"; name: "pair" };
+  templateArgs: [TypeNode, TypeNode];
+};
+
+export type TupleTypeNode = TemplateInstanceTypeNode & {
+  template: { kind: "NamedType"; name: "tuple" };
+  templateArgs: TypeNode[];
+};
+
+export type IteratorTypeNode = TemplateInstanceTypeNode & {
+  template: { kind: "NamedType"; name: "__iterator" };
+  templateArgs: [TypeNode];
 };
 
 export type PointerTypeNode = {
@@ -52,10 +66,13 @@ export type ReferenceTypeNode = {
 export type TypeNode =
   | PrimitiveTypeNode
   | ArrayTypeNode
+  | NamedTypeNode
+  | TemplateInstanceTypeNode
   | VectorTypeNode
   | MapTypeNode
   | PairTypeNode
   | TupleTypeNode
+  | IteratorTypeNode
   | PointerTypeNode
   | ReferenceTypeNode;
 
@@ -71,13 +88,22 @@ export type SourceRange = SourceLocation & {
 
 export type NodeBase = SourceRange;
 
+export type TemplateFunctionDeclNode = NodeBase & {
+  kind: "TemplateFunctionDecl";
+  typeParams: string[];
+  returnType: TypeNode;
+  name: string;
+  params: ParamNode[];
+  body: BlockStmtNode;
+};
+
 export type ProgramNode = NodeBase & {
   kind: "Program";
   globals: GlobalDeclNode[];
-  functions: FunctionDeclNode[];
+  functions: (FunctionDeclNode | TemplateFunctionDeclNode)[];
 };
 
-export type GlobalDeclNode = VarDeclNode | ArrayDeclNode | VectorDeclNode;
+export type GlobalDeclNode = VarDeclNode | ArrayDeclNode;
 
 export type FunctionDeclNode = NodeBase & {
   kind: "FunctionDecl";
@@ -98,7 +124,6 @@ export type StatementNode =
   | DeclGroupStmtNode
   | VarDeclNode
   | ArrayDeclNode
-  | VectorDeclNode
   | RangeForStmtNode
   | IfStmtNode
   | ForStmtNode
@@ -118,7 +143,7 @@ export type BlockStmtNode = NodeBase & {
 
 export type DeclGroupStmtNode = NodeBase & {
   kind: "DeclGroupStmt";
-  declarations: Array<VarDeclNode | ArrayDeclNode | VectorDeclNode>;
+  declarations: Array<VarDeclNode | ArrayDeclNode>;
 };
 
 export type VarDeclNode = NodeBase & {
@@ -134,13 +159,6 @@ export type ArrayDeclNode = NodeBase & {
   name: string;
   dimensions: bigint[];
   initializers: ExprNode[];
-};
-
-export type VectorDeclNode = NodeBase & {
-  kind: "VectorDecl";
-  type: VectorTypeNode;
-  name: string;
-  constructorArgs: ExprNode[];
 };
 
 export type RangeForStmtNode = NodeBase & {
@@ -218,9 +236,10 @@ export type ExprNode =
   | UnaryExprNode
   | AddressOfExprNode
   | DerefExprNode
-  | VectorCtorExprNode
   | CallExprNode
-  | TupleGetExprNode
+  | TemplateIdExprNode
+  | TemplateCallExprNode
+  | MemberAccessExprNode
   | MethodCallExprNode
   | IndexExprNode
   | IdentifierExprNode
@@ -230,7 +249,8 @@ export type AssignTargetNode =
   | IdentifierExprNode
   | IndexExprNode
   | DerefExprNode
-  | TupleGetExprNode;
+  | MemberAccessExprNode
+  | TemplateCallExprNode;
 
 export type AssignExprNode = NodeBase & {
   kind: "AssignExpr";
@@ -289,10 +309,22 @@ export type DerefExprNode = NodeBase & {
   pointer: ExprNode;
 };
 
-export type VectorCtorExprNode = NodeBase & {
-  kind: "VectorCtorExpr";
-  type: VectorTypeNode;
-  args: ExprNode[];
+export type TypeTemplateArgNode = {
+  kind: "TypeTemplateArg";
+  type: TypeNode;
+};
+
+export type IntTemplateArgNode = {
+  kind: "IntTemplateArg";
+  value: number;
+};
+
+export type TemplateArgNode = TypeTemplateArgNode | IntTemplateArgNode;
+
+export type TemplateIdExprNode = NodeBase & {
+  kind: "TemplateIdExpr";
+  template: string;
+  templateArgs: TemplateArgNode[];
 };
 
 export type CallExprNode = NodeBase & {
@@ -301,10 +333,16 @@ export type CallExprNode = NodeBase & {
   args: ExprNode[];
 };
 
-export type TupleGetExprNode = NodeBase & {
-  kind: "TupleGetExpr";
-  tuple: ExprNode;
-  index: number;
+export type TemplateCallExprNode = NodeBase & {
+  kind: "TemplateCallExpr";
+  callee: TemplateIdExprNode;
+  args: ExprNode[];
+};
+
+export type MemberAccessExprNode = NodeBase & {
+  kind: "MemberAccessExpr";
+  receiver: ExprNode;
+  member: string;
 };
 
 export type MethodCallExprNode = NodeBase & {
@@ -377,7 +415,9 @@ export type DebugValueView = {
     | "map"
     | "pair"
     | "tuple"
+    | "vector"
     | "array"
+    | "iterator"
     | "pointer"
     | "reference"
     | "void"
@@ -461,24 +501,59 @@ export function primitiveType(name: PrimitiveTypeName): PrimitiveTypeNode {
   return { kind: "PrimitiveType", name };
 }
 
+export function namedType(name: string): NamedTypeNode {
+  return { kind: "NamedType", name };
+}
+
 export function arrayType(elementType: TypeNode): ArrayTypeNode {
   return { kind: "ArrayType", elementType };
 }
 
+export function templateInstanceType(
+  template: NamedTypeNode,
+  templateArgs: TypeNode[],
+): TemplateInstanceTypeNode {
+  return { kind: "TemplateInstanceType", template, templateArgs };
+}
+
 export function vectorType(elementType: TypeNode): VectorTypeNode {
-  return { kind: "VectorType", elementType };
+  return {
+    kind: "TemplateInstanceType",
+    template: { kind: "NamedType", name: "vector" },
+    templateArgs: [elementType],
+  };
 }
 
 export function mapType(keyType: TypeNode, valueType: TypeNode): MapTypeNode {
-  return { kind: "MapType", keyType, valueType };
+  return {
+    kind: "TemplateInstanceType",
+    template: { kind: "NamedType", name: "map" },
+    templateArgs: [keyType, valueType],
+  };
 }
 
 export function pairType(firstType: TypeNode, secondType: TypeNode): PairTypeNode {
-  return { kind: "PairType", firstType, secondType };
+  return {
+    kind: "TemplateInstanceType",
+    template: { kind: "NamedType", name: "pair" },
+    templateArgs: [firstType, secondType],
+  };
 }
 
 export function tupleType(elementTypes: TypeNode[]): TupleTypeNode {
-  return { kind: "TupleType", elementTypes };
+  return {
+    kind: "TemplateInstanceType",
+    template: { kind: "NamedType", name: "tuple" },
+    templateArgs: [...elementTypes],
+  };
+}
+
+export function iteratorType(containerType: TypeNode): IteratorTypeNode {
+  return {
+    kind: "TemplateInstanceType",
+    template: { kind: "NamedType", name: "__iterator" },
+    templateArgs: [containerType],
+  };
 }
 
 export function pointerType(pointeeType: TypeNode): PointerTypeNode {
@@ -497,20 +572,36 @@ export function isArrayType(type: TypeNode): type is ArrayTypeNode {
   return type.kind === "ArrayType";
 }
 
+export function isNamedType(type: TypeNode): type is NamedTypeNode {
+  return type.kind === "NamedType";
+}
+
+export function isTemplateInstanceType(type: TypeNode): type is TemplateInstanceTypeNode {
+  return type.kind === "TemplateInstanceType";
+}
+
+export function isTemplateType(type: TypeNode): type is TemplateInstanceTypeNode {
+  return isTemplateInstanceType(type);
+}
+
 export function isVectorType(type: TypeNode): type is VectorTypeNode {
-  return type.kind === "VectorType";
+  return isTemplateInstanceType(type) && type.template.name === "vector";
 }
 
 export function isMapType(type: TypeNode): type is MapTypeNode {
-  return type.kind === "MapType";
+  return isTemplateInstanceType(type) && type.template.name === "map";
 }
 
 export function isPairType(type: TypeNode): type is PairTypeNode {
-  return type.kind === "PairType";
+  return isTemplateInstanceType(type) && type.template.name === "pair";
 }
 
 export function isTupleType(type: TypeNode): type is TupleTypeNode {
-  return type.kind === "TupleType";
+  return isTemplateInstanceType(type) && type.template.name === "tuple";
+}
+
+export function isIteratorType(type: TypeNode): type is IteratorTypeNode {
+  return isTemplateInstanceType(type) && type.template.name === "__iterator";
 }
 
 export function isPointerType(type: TypeNode): type is PointerTypeNode {
@@ -525,16 +616,14 @@ export function typeToString(type: TypeNode): string {
   switch (type.kind) {
     case "PrimitiveType":
       return type.name;
+    case "NamedType":
+      return type.name;
     case "ArrayType":
       return `${typeToString(type.elementType)}[]`;
-    case "VectorType":
-      return `vector<${typeToString(type.elementType)}>`;
-    case "MapType":
-      return `map<${typeToString(type.keyType)}, ${typeToString(type.valueType)}>`;
-    case "PairType":
-      return `pair<${typeToString(type.firstType)}, ${typeToString(type.secondType)}>`;
-    case "TupleType":
-      return `tuple<${type.elementTypes.map((elementType) => typeToString(elementType)).join(", ")}>`;
+    case "TemplateInstanceType":
+      return `${type.template.name}<${type.templateArgs
+        .map((templateArg) => typeToString(templateArg))
+        .join(", ")}>`;
     case "PointerType":
       return `${typeToString(type.pointeeType)}*`;
     case "ReferenceType":

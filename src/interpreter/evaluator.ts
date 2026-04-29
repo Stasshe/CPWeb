@@ -1,36 +1,79 @@
 import type { RuntimeLocation, RuntimeValue } from "@/runtime/value";
-import type { AssignTargetNode, BinaryExprNode, ExprNode, FunctionDeclNode } from "@/types";
-import { isReferenceType } from "@/types";
+import { inferTypeArgs, instantiateFunction } from "@/semantic/template-instantiator";
+import {
+  compareSortableValues,
+  compareValues,
+  sameLocation,
+  toNumericOperands,
+} from "@/stdlib/builtins/compare";
+import type { EvalCtx } from "@/stdlib/eval-context";
+import { isTupleGetTemplateCall } from "@/stdlib/template-exprs";
+import { mapValueType, tupleElementTypes, vectorElementType } from "@/stdlib/template-types";
+import type {
+  AssignTargetNode,
+  BinaryExprNode,
+  ExprNode,
+  FunctionDeclNode,
+  TemplateFunctionDeclNode,
+  TypeNode,
+} from "@/types";
+import { isVectorType } from "@/types";
+import {
+  evaluateMemberAccess,
+  evaluateMethodCall,
+  evaluateTemplateCall,
+  tryEvaluateBuiltinCall,
+} from "./builtin-eval";
 import { InterpreterRuntime } from "./runtime";
 
 export type RuntimeArgument =
   | { kind: "value"; value: RuntimeValue }
-  | { kind: "reference"; target: RuntimeLocation; type: import("@/types").TypeNode };
+  | { kind: "reference"; target: RuntimeLocation; type: TypeNode };
 
 export abstract class InterpreterEvaluator extends InterpreterRuntime {
+  private get evalCtx(): EvalCtx {
+    return {
+      evaluateExpr: (expr) => this.evaluateExpr(expr),
+      fail: (msg, line) => this.fail(msg, line),
+      expectInt: (v, line) => this.expectInt(v, line),
+      expectBool: (v, line) => this.expectBool(v, line),
+      expectArray: (v, line) => this.expectArray(v, line),
+      expectVector: (v, line) => this.expectVector(v, line),
+      ensureInitialized: (v, line, what) => this.ensureInitialized(v, line, what),
+      ensureNotVoid: (v, line) =>
+        this.ensureNotVoid(v as Exclude<RuntimeValue, { kind: "uninitialized" }>, line),
+      castToElementType: (v, t, line) => this.castToElementType(v, t, line),
+      runtimeValueToType: (v, line) => this.runtimeValueToType(v, line),
+      defaultValueForType: (t, line) => this.defaultValueForType(t, line),
+      isAssignableTarget: (expr): expr is AssignTargetNode => this.isAssignableTarget(expr),
+      readAssignTarget: (target, line) =>
+        this.readLocation(this.resolveAssignTargetLocation(target, line), line),
+      writeAssignTarget: (target, value, line) =>
+        this.writeLocation(this.resolveAssignTargetLocation(target, line), value, line),
+      resolveAssignTargetLocation: (target, line) => this.resolveAssignTargetLocation(target, line),
+      readLocation: (loc, line) => this.readLocation(loc, line),
+      writeLocation: (loc, value, line) => this.writeLocation(loc, value, line),
+      allocVector: (type, values) => this.allocateVector(type, values),
+      arrays: this.arrays,
+      findOrInsertMapEntry: (mapValue, key, line) => this.findOrInsertMapEntry(mapValue, key, line),
+    };
+  }
+
   protected evaluateExpr(expr: ExprNode): RuntimeValue {
     this.step(expr, "expression");
 
     switch (expr.kind) {
       case "Literal":
-        if (expr.valueType === "int") {
-          return { kind: "int", value: expr.value as bigint };
-        }
-        if (expr.valueType === "double") {
-          return { kind: "double", value: expr.value as number };
-        }
-        if (expr.valueType === "bool") {
-          return { kind: "bool", value: expr.value as boolean };
-        }
-        if (expr.valueType === "char") {
-          return { kind: "char", value: expr.value as string };
-        }
+        if (expr.valueType === "int") return { kind: "int", value: expr.value as bigint };
+        if (expr.valueType === "double") return { kind: "double", value: expr.value as number };
+        if (expr.valueType === "bool") return { kind: "bool", value: expr.value as boolean };
+        if (expr.valueType === "char") return { kind: "char", value: expr.value as string };
         return { kind: "string", value: expr.value as string };
       case "Identifier":
-        if (expr.name === "endl") {
-          return { kind: "string", value: "\n" };
-        }
+        if (expr.name === "endl") return { kind: "string", value: "\n" };
         return this.resolve(expr.name, expr.line);
+      case "TemplateIdExpr":
+        return this.fail(`'${expr.template}' was not declared in this scope`, expr.line);
       case "AddressOfExpr": {
         const location = this.resolveAssignTargetLocation(expr.target, expr.line);
         return {
@@ -44,16 +87,12 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         const location = this.resolvePointerLocation(expr.pointer, expr.line);
         return this.readLocation(location, expr.line);
       }
-      case "VectorCtorExpr": {
-        const args = expr.args.map((arg) => this.evaluateExpr(arg));
-        return this.constructVectorValue(expr.type, args, expr.line);
-      }
       case "CallExpr": {
         const fn = this.functions.get(expr.callee);
         if (fn !== undefined) {
           const argValues: RuntimeArgument[] = expr.args.map((arg, index) => {
             const param = fn.params[index];
-            if (param !== undefined && isReferenceType(param.type)) {
+            if (param !== undefined && param.type.kind === "ReferenceType") {
               if (!this.isAssignableTarget(arg)) {
                 this.fail("reference argument must be an lvalue", arg.line);
               }
@@ -67,18 +106,32 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
           });
           return this.invokeFunction(fn, argValues);
         }
-        const builtinResult = this.tryEvaluateBuiltinCall(expr.callee, expr.args, expr.line);
+        const templateFn = this.templateFunctions.get(expr.callee);
+        if (templateFn !== undefined) {
+          return this.invokeTemplateFunction(templateFn, expr.args, expr.line);
+        }
+        const builtinResult = tryEvaluateBuiltinCall(
+          expr.callee,
+          expr.args,
+          expr.line,
+          this.evalCtx,
+        );
         if (builtinResult !== null) {
           return builtinResult;
         }
         return this.fail(`'${expr.callee}' was not declared in this scope`, expr.line);
       }
+      case "TemplateCallExpr":
+        if (this.templateFunctions.has(expr.callee.template)) {
+          return this.invokeExplicitTemplateFunction(expr);
+        }
+        return evaluateTemplateCall(expr, this.evalCtx);
+      case "MemberAccessExpr":
+        return evaluateMemberAccess(expr.receiver, expr.member, expr.line, this.evalCtx);
       case "MethodCallExpr":
-        return this.evaluateMethodCall(expr.receiver, expr.method, expr.args, expr.line);
+        return evaluateMethodCall(expr.receiver, expr.method, expr.args, expr.line, this.evalCtx);
       case "IndexExpr":
         return this.getIndexedValue(expr.target, expr.index, expr.line);
-      case "TupleGetExpr":
-        return this.getTupleElementValue(expr.tuple, expr.index, expr.line);
       case "ConditionalExpr": {
         const condition = this.evaluateExpr(expr.condition);
         const selected = this.evaluateCondition(condition, expr.condition.line)
@@ -109,7 +162,6 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
           const value = this.expectInt(this.evaluateExpr(expr.operand), expr.line);
           return { kind: "int", value: ~value.value };
         }
-
         if (!this.isAssignableTarget(expr.operand)) {
           this.fail("increment/decrement target must be a variable", expr.line);
         }
@@ -126,10 +178,7 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         const numericUpdated: RuntimeValue =
           currentValue.kind === "char"
             ? this.intToChar(numericCurrent.value + delta, expr.line)
-            : {
-                kind: "int",
-                value: numericCurrent.value + delta,
-              };
+            : { kind: "int", value: numericCurrent.value + delta };
         this.writeLocation(targetLocation, numericUpdated, expr.line);
         return expr.isPostfix ? numericCurrent : numericUpdated;
       }
@@ -143,19 +192,13 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
           this.assign(expr.target.name, assigned, expr.line);
           return assigned;
         }
-
         let assigned: RuntimeValue = rightValue;
         if (expr.operator !== "=") {
-          const currentIndexValue = this.readLocation(
+          const currentVal = this.readLocation(
             this.resolveAssignTargetLocation(expr.target, expr.line),
             expr.line,
           );
-          assigned = this.resolveAssignedValue(
-            expr.operator,
-            currentIndexValue,
-            rightValue,
-            expr.line,
-          );
+          assigned = this.resolveAssignedValue(expr.operator, currentVal, rightValue, expr.line);
         }
         this.writeLocation(
           this.resolveAssignTargetLocation(expr.target, expr.line),
@@ -168,6 +211,48 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
   }
 
   protected abstract invokeFunction(fn: FunctionDeclNode, args: RuntimeArgument[]): RuntimeValue;
+
+  protected invokeTemplateFunction(
+    templateFn: TemplateFunctionDeclNode,
+    argExprs: import("@/types").ExprNode[],
+    line: number,
+  ): RuntimeValue {
+    if (argExprs.length !== templateFn.params.length) {
+      this.fail(
+        `'${templateFn.name}' requires ${templateFn.params.length.toString()} arguments`,
+        line,
+      );
+    }
+    const argValues: RuntimeArgument[] = argExprs.map((argExpr, index) => {
+      const param = templateFn.params[index];
+      if (param !== undefined && param.type.kind === "ReferenceType") {
+        if (!this.isAssignableTarget(argExpr)) {
+          this.fail("reference argument must be an lvalue", argExpr.line);
+        }
+        return {
+          kind: "reference",
+          target: this.resolveAssignTargetLocation(argExpr, argExpr.line),
+          type: param.type.referredType,
+        };
+      }
+      return { kind: "value", value: this.evaluateExpr(argExpr) };
+    });
+
+    const argTypes = argValues.map((a) =>
+      a.kind === "value"
+        ? this.runtimeValueToType(a.value, line)
+        : this.runtimeValueToType(this.readLocation(a.target, line), line),
+    );
+
+    const map = inferTypeArgs(templateFn.typeParams, templateFn.params, argTypes);
+    if (map === null) {
+      this.fail(`cannot deduce template arguments for '${templateFn.name}'`, line);
+    }
+
+    const instantiated = instantiateFunction(templateFn, map);
+    return this.invokeFunction(instantiated, argValues);
+  }
+
   protected resolveAssignTargetLocation(target: AssignTargetNode, line: number): RuntimeLocation {
     switch (target.kind) {
       case "Identifier":
@@ -176,18 +261,81 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         return this.resolveIndexedLocation(target.target, target.index, line);
       case "DerefExpr":
         return this.resolvePointerLocation(target.pointer, line);
-      case "TupleGetExpr":
-        return this.resolveTupleElementLocation(target.tuple, target.index, line);
+      case "MemberAccessExpr":
+        return this.resolveMemberAccessLocation(target.receiver, target.member, line);
+      case "TemplateCallExpr":
+        return this.resolveTemplateCallLocation(target, line);
     }
   }
 
-  private isAssignableTarget(expr: ExprNode): expr is AssignTargetNode {
+  protected isAssignableTarget(expr: ExprNode): expr is AssignTargetNode {
     return (
       expr.kind === "Identifier" ||
       expr.kind === "IndexExpr" ||
       expr.kind === "DerefExpr" ||
-      expr.kind === "TupleGetExpr"
+      expr.kind === "MemberAccessExpr" ||
+      isTupleGetTemplateCall(expr)
     );
+  }
+
+  private resolveTemplateCallLocation(
+    expr: Extract<ExprNode, { kind: "TemplateCallExpr" }>,
+    line: number,
+  ): RuntimeLocation {
+    if (expr.callee.template === "get") {
+      const arg = expr.callee.templateArgs[0];
+      if (arg === undefined || arg.kind !== "IntTemplateArg") {
+        this.fail("get requires exactly 1 integer template argument and 1 value argument", line);
+      }
+      const tupleExpr = expr.args[0];
+      if (tupleExpr === undefined || expr.args.length !== 1) {
+        this.fail("get requires exactly 1 integer template argument and 1 value argument", line);
+      }
+      return this.resolveTupleElementLocation(tupleExpr, arg.value, line);
+    }
+    this.fail("template call is not assignable", line);
+  }
+
+  private invokeExplicitTemplateFunction(
+    expr: Extract<ExprNode, { kind: "TemplateCallExpr" }>,
+  ): RuntimeValue {
+    const templateFn = this.templateFunctions.get(expr.callee.template);
+    if (templateFn === undefined) {
+      return this.fail(`'${expr.callee.template}' was not declared in this scope`, expr.line);
+    }
+    if (expr.callee.templateArgs.length !== templateFn.typeParams.length) {
+      this.fail(
+        `'${templateFn.name}' requires ${templateFn.typeParams.length.toString()} template argument${templateFn.typeParams.length === 1 ? "" : "s"}`,
+        expr.line,
+      );
+    }
+
+    const map = new Map<string, TypeNode>();
+    for (let i = 0; i < templateFn.typeParams.length; i += 1) {
+      const typeParam = templateFn.typeParams[i];
+      const templateArg = expr.callee.templateArgs[i];
+      if (typeParam === undefined || templateArg?.kind !== "TypeTemplateArg") {
+        this.fail(`explicit template arguments for '${templateFn.name}' must be types`, expr.line);
+      }
+      map.set(typeParam, templateArg.type);
+    }
+
+    const instantiated = instantiateFunction(templateFn, map);
+    const argValues: RuntimeArgument[] = expr.args.map((arg, index) => {
+      const param = instantiated.params[index];
+      if (param !== undefined && param.type.kind === "ReferenceType") {
+        if (!this.isAssignableTarget(arg)) {
+          this.fail("reference argument must be an lvalue", arg.line);
+        }
+        return {
+          kind: "reference",
+          target: this.resolveAssignTargetLocation(arg, arg.line),
+          type: param.type.referredType,
+        };
+      }
+      return { kind: "value", value: this.evaluateExpr(arg) };
+    });
+    return this.invokeFunction(instantiated, argValues);
   }
 
   private resolvePointerLocation(pointerExpr: ExprNode, line: number): RuntimeLocation {
@@ -201,7 +349,41 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     return pointer.target;
   }
 
-  private resolveIndexedLocation(
+  private resolveMemberAccessLocation(
+    receiverExpr: ExprNode,
+    member: string,
+    line: number,
+  ): RuntimeLocation {
+    if (!this.isAssignableTarget(receiverExpr)) {
+      this.fail("member access target must be assignable", line);
+    }
+    const parent = this.resolveAssignTargetLocation(receiverExpr, line);
+    const receiver = this.readLocation(parent, line);
+    if (receiver.kind !== "object" || receiver.objectKind !== "pair") {
+      this.fail("type mismatch: expected pair", line);
+    }
+    if (member === "first") {
+      return {
+        kind: "object",
+        objectKind: "pair",
+        parent,
+        member,
+        type: receiver.type.templateArgs[0] as TypeNode,
+      };
+    }
+    if (member === "second") {
+      return {
+        kind: "object",
+        objectKind: "pair",
+        parent,
+        member,
+        type: receiver.type.templateArgs[1] as TypeNode,
+      };
+    }
+    this.fail(`unknown pair member '${member}'`, line);
+  }
+
+  protected resolveIndexedLocation(
     targetExpr: ExprNode,
     indexExpr: ExprNode,
     line: number,
@@ -222,7 +404,7 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         index: Number(index),
       };
     }
-    if (targetValue.kind === "map") {
+    if (targetValue.kind === "object" && targetValue.objectKind === "map") {
       if (
         targetExpr.kind !== "Identifier" &&
         targetExpr.kind !== "IndexExpr" &&
@@ -233,7 +415,11 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       const parent = this.resolveAssignTargetLocation(targetExpr as AssignTargetNode, line);
       const keyValue = this.ensureNotVoid(
         this.ensureInitialized(
-          this.assertType(targetValue.type.keyType, this.evaluateExpr(indexExpr), line),
+          this.assertType(
+            targetValue.type.templateArgs[0] ?? { kind: "PrimitiveType", name: "int" },
+            this.evaluateExpr(indexExpr),
+            line,
+          ),
           line,
           "map key",
         ),
@@ -241,15 +427,19 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       );
       const entryIndex = this.findOrInsertMapEntry(targetValue, keyValue, line);
       return {
-        kind: "map",
+        kind: "object",
+        objectKind: "map",
         parent,
         entryIndex,
-        type: targetValue.type.valueType,
+        type: mapValueType(targetValue.type),
         access: "value",
       };
     }
     const index = this.expectInt(this.evaluateExpr(indexExpr), line).value;
-    const target = this.expectArray(targetValue, line);
+    const target =
+      targetValue.kind === "object" && targetValue.objectKind === "vector"
+        ? targetValue
+        : this.expectArray(targetValue, line);
     const store = this.arrays.get(target.ref);
     if (store === undefined) {
       this.fail("invalid array reference", line);
@@ -264,7 +454,12 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       kind: "array",
       ref: target.ref,
       index: Number(index),
-      type: store.type.elementType,
+      type:
+        target.kind === "object"
+          ? vectorElementType(target.type)
+          : isVectorType(store.type)
+            ? vectorElementType(store.type)
+            : store.type.elementType,
     };
   }
 
@@ -278,281 +473,17 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     }
     const parent = this.resolveAssignTargetLocation(tupleExpr, line);
     const tupleValue = this.readLocation(parent, line);
-    if (tupleValue.kind !== "tuple") {
+    if (tupleValue.kind !== "object" || tupleValue.objectKind !== "tuple") {
       this.fail("type mismatch: expected tuple", line);
     }
-    const elementType = tupleValue.type.elementTypes[index];
+    const elementType = tupleElementTypes(tupleValue.type)[index];
     if (elementType === undefined) {
       this.fail(
         `tuple index ${index.toString()} out of range for tuple of size ${tupleValue.values.length}`,
         line,
       );
     }
-    return {
-      kind: "tuple",
-      parent,
-      index,
-      type: elementType,
-    };
-  }
-
-  private getTupleElementValue(tupleExpr: ExprNode, index: number, line: number): RuntimeValue {
-    const tupleValue = this.ensureInitialized(this.evaluateExpr(tupleExpr), line, "tuple");
-    if (tupleValue.kind !== "tuple") {
-      this.fail("type mismatch: expected tuple", line);
-    }
-    const elementValue = tupleValue.values[index];
-    if (elementValue === undefined) {
-      this.fail(
-        `tuple index ${index.toString()} out of range for tuple of size ${tupleValue.values.length}`,
-        line,
-      );
-    }
-    return this.ensureNotVoid(this.ensureInitialized(elementValue, line, "tuple element"), line);
-  }
-
-  private tryEvaluateBuiltinCall(
-    callee: string,
-    args: ExprNode[],
-    line: number,
-  ): RuntimeValue | null {
-    if (callee === "abs") {
-      if (args.length !== 1) {
-        this.fail("abs requires exactly 1 argument", line);
-      }
-      const value = this.expectInt(this.evaluateExpr(args[0] as ExprNode), line).value;
-      return { kind: "int", value: value < 0n ? -value : value };
-    }
-
-    if (callee === "max" || callee === "min") {
-      if (args.length !== 2) {
-        this.fail(`${callee} requires exactly 2 arguments`, line);
-      }
-      const left = this.expectInt(this.evaluateExpr(args[0] as ExprNode), line).value;
-      const right = this.expectInt(this.evaluateExpr(args[1] as ExprNode), line).value;
-      return {
-        kind: "int",
-        value: callee === "max" ? (left > right ? left : right) : left < right ? left : right,
-      };
-    }
-
-    if (callee === "swap") {
-      if (args.length !== 2) {
-        this.fail("swap requires exactly 2 arguments", line);
-      }
-      const left = args[0];
-      const right = args[1];
-      if (
-        left === undefined ||
-        right === undefined ||
-        !this.isAssignableTarget(left) ||
-        !this.isAssignableTarget(right)
-      ) {
-        this.fail("swap arguments must be lvalues", line);
-      }
-      const leftValue = this.readAssignTarget(left, line);
-      const rightValue = this.readAssignTarget(right, line);
-      this.writeAssignTarget(left, rightValue, line);
-      this.writeAssignTarget(right, leftValue, line);
-      return { kind: "void" };
-    }
-
-    if (callee === "make_pair") {
-      if (args.length !== 2) {
-        this.fail("make_pair requires exactly 2 arguments", line);
-      }
-      const firstExpr = args[0];
-      const secondExpr = args[1];
-      if (firstExpr === undefined || secondExpr === undefined) {
-        this.fail("make_pair requires exactly 2 arguments", line);
-      }
-      const firstValue = this.ensureNotVoid(
-        this.ensureInitialized(this.evaluateExpr(firstExpr), line, "value"),
-        line,
-      );
-      const secondValue = this.ensureNotVoid(
-        this.ensureInitialized(this.evaluateExpr(secondExpr), line, "value"),
-        line,
-      );
-      return {
-        kind: "pair",
-        type: {
-          kind: "PairType",
-          firstType: this.runtimeValueToType(firstValue, line),
-          secondType: this.runtimeValueToType(secondValue, line),
-        },
-        first: firstValue,
-        second: secondValue,
-      };
-    }
-
-    if (callee === "make_tuple") {
-      if (args.length === 0) {
-        this.fail("make_tuple requires at least 1 argument", line);
-      }
-      const values = args.map((arg) =>
-        this.ensureNotVoid(this.ensureInitialized(this.evaluateExpr(arg), line, "value"), line),
-      );
-      return {
-        kind: "tuple",
-        type: {
-          kind: "TupleType",
-          elementTypes: values.map((value) => this.runtimeValueToType(value, line)),
-        },
-        values,
-      };
-    }
-
-    if (callee === "sort") {
-      this.applyRangeBuiltin("sort", args, line);
-      return { kind: "void" };
-    }
-
-    if (callee === "reverse") {
-      this.applyRangeBuiltin("reverse", args, line);
-      return { kind: "void" };
-    }
-
-    if (callee === "fill") {
-      this.applyRangeBuiltin("fill", args, line);
-      return { kind: "void" };
-    }
-
-    return null;
-  }
-
-  private resolveAssignedValue(
-    operator: "=" | "+=" | "-=" | "*=" | "/=" | "%=",
-    current: RuntimeValue,
-    rightValue: RuntimeValue,
-    line: number,
-  ): RuntimeValue {
-    if (operator === "=") {
-      return this.assignWithCurrentType(current, rightValue, line);
-    }
-    if (current.kind === "pointer") {
-      if (operator !== "+=" && operator !== "-=") {
-        this.fail("type mismatch: expected numeric", line);
-      }
-      const delta = this.expectInt(rightValue, line).value;
-      return this.offsetPointer(current, operator === "+=" ? delta : -delta, line);
-    }
-    const left = this.expectInt(current, line);
-    const right = this.expectInt(rightValue, line);
-    return this.applyCompoundAssign(operator, left.value, right.value, line);
-  }
-
-  private evaluateMethodCall(
-    receiverExpr: ExprNode,
-    method: string,
-    args: ExprNode[],
-    line: number,
-  ): RuntimeValue {
-    const receiver = this.evaluateExpr(receiverExpr);
-    if (receiver.kind === "pair") {
-      if (method !== "first" && method !== "second") {
-        this.fail(`unknown pair member '${method}'`, line);
-      }
-      if (args.length !== 0) {
-        this.fail(`${method} requires no arguments`, line);
-      }
-      return method === "first" ? receiver.first : receiver.second;
-    }
-    if (receiver.kind === "map") {
-      if (method === "size") {
-        if (args.length !== 0) {
-          this.fail("size requires no arguments", line);
-        }
-        return { kind: "int", value: BigInt(receiver.entries.length) };
-      }
-      this.fail(`unknown map method '${method}'`, line);
-    }
-    const arrayValue = this.expectArray(receiver, line);
-    const store = this.arrays.get(arrayValue.ref);
-    if (store === undefined) {
-      this.fail("invalid array reference", line);
-    }
-    if (store.type.kind !== "VectorType") {
-      this.fail(`method '${method}' is not supported for fixed array`, line);
-    }
-
-    if (method === "push_back") {
-      if (args.length !== 1) {
-        this.fail("push_back requires exactly 1 argument", line);
-      }
-      const value = this.castToElementType(
-        this.evaluateExpr(args[0] as ExprNode),
-        store.type.elementType,
-        line,
-      );
-      store.values.push(value);
-      return { kind: "void" };
-    }
-
-    if (method === "pop_back") {
-      if (args.length !== 0) {
-        this.fail("pop_back requires no arguments", line);
-      }
-      if (store.values.length === 0) {
-        this.fail("pop_back on empty vector", line);
-      }
-      store.values.pop();
-      return { kind: "void" };
-    }
-
-    if (method === "size") {
-      if (args.length !== 0) {
-        this.fail("size requires no arguments", line);
-      }
-      return { kind: "int", value: BigInt(store.values.length) };
-    }
-
-    if (method === "back") {
-      if (args.length !== 0) {
-        this.fail("back requires no arguments", line);
-      }
-      const last = store.values[store.values.length - 1];
-      if (last === undefined) {
-        this.fail("back on empty vector", line);
-      }
-      return last;
-    }
-
-    if (method === "empty") {
-      if (args.length !== 0) {
-        this.fail("empty requires no arguments", line);
-      }
-      return { kind: "bool", value: store.values.length === 0 };
-    }
-
-    if (method === "clear") {
-      if (args.length !== 0) {
-        this.fail("clear requires no arguments", line);
-      }
-      store.values = [];
-      return { kind: "void" };
-    }
-
-    if (method === "resize") {
-      if (args.length !== 1) {
-        this.fail("resize requires exactly 1 argument", line);
-      }
-      const newSize = this.expectInt(this.evaluateExpr(args[0] as ExprNode), line).value;
-      if (newSize < 0n) {
-        this.fail("resize size must be non-negative", line);
-      }
-      const targetSize = Number(newSize);
-      if (targetSize < store.values.length) {
-        store.values = store.values.slice(0, targetSize);
-      } else {
-        while (store.values.length < targetSize) {
-          store.values.push(this.defaultValueForType(store.type.elementType, line));
-        }
-      }
-      return { kind: "void" };
-    }
-
-    this.fail(`unknown vector method '${method}'`, line);
+    return { kind: "object", objectKind: "tuple", parent, index, type: elementType };
   }
 
   protected getIndexedValue(targetExpr: ExprNode, indexExpr: ExprNode, line: number): RuntimeValue {
@@ -571,18 +502,14 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
   private evaluateBinary(expr: BinaryExprNode): RuntimeValue {
     if (expr.operator === "&&") {
       const left = this.expectBool(this.evaluateExpr(expr.left), expr.line);
-      if (!left.value) {
-        return { kind: "bool", value: false };
-      }
+      if (!left.value) return { kind: "bool", value: false };
       const right = this.expectBool(this.evaluateExpr(expr.right), expr.line);
       return { kind: "bool", value: right.value };
     }
 
     if (expr.operator === "||") {
       const left = this.expectBool(this.evaluateExpr(expr.left), expr.line);
-      if (left.value) {
-        return { kind: "bool", value: true };
-      }
+      if (left.value) return { kind: "bool", value: true };
       const right = this.expectBool(this.evaluateExpr(expr.right), expr.line);
       return { kind: "bool", value: right.value };
     }
@@ -623,7 +550,6 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     ) {
       const leftInt = this.expectInt(left, expr.line);
       const rightInt = this.expectInt(right, expr.line);
-
       switch (expr.operator) {
         case "<<":
           return {
@@ -644,14 +570,9 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       }
     }
 
-    const pointerArithmeticResult = this.tryEvaluatePointerArithmetic(
-      expr.operator,
-      left,
-      right,
-      expr.line,
-    );
-    if (pointerArithmeticResult !== null) {
-      return pointerArithmeticResult;
+    const pointerResult = this.tryEvaluatePointerArithmetic(expr.operator, left, right, expr.line);
+    if (pointerResult !== null) {
+      return pointerResult;
     }
 
     const numeric = toNumericOperands(left, right, expr.line, this.fail.bind(this));
@@ -680,14 +601,10 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       case "*":
         return { kind: "int", value: numeric.left * numeric.right };
       case "/":
-        if (numeric.right === 0n) {
-          this.fail("division by zero", expr.line);
-        }
+        if (numeric.right === 0n) this.fail("division by zero", expr.line);
         return { kind: "int", value: numeric.left / numeric.right };
       case "%":
-        if (numeric.right === 0n) {
-          this.fail("division by zero", expr.line);
-        }
+        if (numeric.right === 0n) this.fail("division by zero", expr.line);
         return { kind: "int", value: numeric.left % numeric.right };
       default:
         this.fail(`unsupported binary operator '${expr.operator}'`, expr.line);
@@ -695,9 +612,7 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
   }
 
   private normalizeShiftAmount(value: bigint, line: number): bigint {
-    if (value < 0n) {
-      this.fail("shift count must be non-negative", line);
-    }
+    if (value < 0n) this.fail("shift count must be non-negative", line);
     return value;
   }
 
@@ -708,26 +623,20 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     line: number,
   ): RuntimeValue | null {
     if (operator === "+") {
-      if (left.kind === "pointer" && right.kind === "int") {
+      if (left.kind === "pointer" && right.kind === "int")
         return this.offsetPointer(left, right.value, line);
-      }
-      if (left.kind === "int" && right.kind === "pointer") {
+      if (left.kind === "int" && right.kind === "pointer")
         return this.offsetPointer(right, left.value, line);
-      }
       return null;
     }
-
     if (operator === "-") {
-      if (left.kind === "pointer" && right.kind === "int") {
+      if (left.kind === "pointer" && right.kind === "int")
         return this.offsetPointer(left, -right.value, line);
-      }
       if (left.kind === "pointer" && right.kind === "pointer") {
-        const diff = this.diffPointers(left, right, line);
-        return { kind: "int", value: diff };
+        return { kind: "int", value: this.diffPointers(left, right, line) };
       }
       return null;
     }
-
     return null;
   }
 
@@ -736,38 +645,28 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     offset: bigint,
     line: number,
   ): RuntimeValue {
-    if (pointer.target === null) {
-      this.fail("pointer arithmetic on null pointer", line);
-    }
+    if (pointer.target === null) this.fail("pointer arithmetic on null pointer", line);
     const target = pointer.target;
     if (target.kind === "array") {
-      const nextIndex = target.index + Number(offset);
       return {
         kind: "pointer",
         pointeeType: pointer.pointeeType,
         target: {
           kind: "array",
           ref: target.ref,
-          index: nextIndex,
+          index: target.index + Number(offset),
           type: target.type,
         },
       };
     }
     if (target.kind === "string") {
-      const nextIndex = target.index + Number(offset);
       return {
         kind: "pointer",
         pointeeType: pointer.pointeeType,
-        target: {
-          kind: "string",
-          parent: target.parent,
-          index: nextIndex,
-        },
+        target: { kind: "string", parent: target.parent, index: target.index + Number(offset) },
       };
     }
-    if (offset === 0n) {
-      return pointer;
-    }
+    if (offset === 0n) return pointer;
     this.fail("pointer arithmetic requires pointer to array/string element", line);
   }
 
@@ -779,24 +678,41 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     if (left.target === null || right.target === null) {
       this.fail("pointer subtraction requires non-null pointers", line);
     }
-    const leftTarget = left.target;
-    const rightTarget = right.target;
-
-    if (leftTarget.kind === "array" && rightTarget.kind === "array") {
-      if (leftTarget.ref !== rightTarget.ref) {
+    const l = left.target;
+    const r = right.target;
+    if (l.kind === "array" && r.kind === "array") {
+      if (l.ref !== r.ref)
         this.fail("pointer subtraction requires pointers into the same array", line);
-      }
-      return BigInt(leftTarget.index - rightTarget.index);
+      return BigInt(l.index - r.index);
     }
-
-    if (leftTarget.kind === "string" && rightTarget.kind === "string") {
-      if (!sameLocation(leftTarget.parent, rightTarget.parent)) {
+    if (l.kind === "string" && r.kind === "string") {
+      if (!sameLocation(l.parent, r.parent)) {
         this.fail("pointer subtraction requires pointers into the same string", line);
       }
-      return BigInt(leftTarget.index - rightTarget.index);
+      return BigInt(l.index - r.index);
     }
-
     this.fail("pointer subtraction requires compatible pointers", line);
+  }
+
+  private resolveAssignedValue(
+    operator: "=" | "+=" | "-=" | "*=" | "/=" | "%=",
+    current: RuntimeValue,
+    rightValue: RuntimeValue,
+    line: number,
+  ): RuntimeValue {
+    if (operator === "=") {
+      return this.assignWithCurrentType(current, rightValue, line);
+    }
+    if (current.kind === "pointer") {
+      if (operator !== "+=" && operator !== "-=") {
+        this.fail("type mismatch: expected numeric", line);
+      }
+      const delta = this.expectInt(rightValue, line).value;
+      return this.offsetPointer(current, operator === "+=" ? delta : -delta, line);
+    }
+    const left = this.expectInt(current, line);
+    const right = this.expectInt(rightValue, line);
+    return this.applyCompoundAssign(operator, left.value, right.value, line);
   }
 
   private applyCompoundAssign(
@@ -813,122 +729,16 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       case "*=":
         return { kind: "int", value: left * right };
       case "/=":
-        if (right === 0n) {
-          this.fail("division by zero", line);
-        }
+        if (right === 0n) this.fail("division by zero", line);
         return { kind: "int", value: left / right };
       case "%=":
-        if (right === 0n) {
-          this.fail("division by zero", line);
-        }
+        if (right === 0n) this.fail("division by zero", line);
         return { kind: "int", value: left % right };
     }
   }
 
-  private applyRangeBuiltin(
-    callee: "sort" | "reverse" | "fill",
-    args: ExprNode[],
-    line: number,
-  ): void {
-    const range = this.expectVectorRange(args, callee, line);
-    const store = range.store;
-
-    if (callee === "reverse") {
-      store.values.reverse();
-      return;
-    }
-
-    if (callee === "fill") {
-      const fillArg = args[2];
-      if (fillArg === undefined) {
-        this.fail("fill requires exactly 3 arguments", line);
-      }
-      const fillValue = this.castToElementType(
-        this.evaluateExpr(fillArg),
-        store.type.elementType,
-        line,
-      );
-      store.values = store.values.map(() => fillValue);
-      return;
-    }
-
-    const descending = this.isDescendingSortComparator(args[2], line);
-    store.values.sort((left, right) =>
-      compareSortableValues(left, right, descending, line, this.fail.bind(this)),
-    );
-  }
-
-  private expectVectorRange(
-    args: ExprNode[],
-    callee: "sort" | "reverse" | "fill",
-    line: number,
-  ): {
-    store: {
-      values: RuntimeValue[];
-      type: { kind: "VectorType"; elementType: import("@/types").TypeNode };
-    };
-  } {
-    const minArgs = callee === "fill" ? 3 : 2;
-    const maxArgs = callee === "sort" ? 3 : callee === "fill" ? 3 : 2;
-    if (args.length < minArgs || args.length > maxArgs) {
-      this.fail(
-        `${callee} requires ${callee === "sort" ? "2 or 3" : callee === "fill" ? "exactly 3" : "exactly 2"} arguments`,
-        line,
-      );
-    }
-
-    const beginExpr = args[0];
-    const endExpr = args[1];
-    if (
-      beginExpr === undefined ||
-      endExpr === undefined ||
-      beginExpr.kind !== "MethodCallExpr" ||
-      endExpr.kind !== "MethodCallExpr"
-    ) {
-      this.fail(`${callee} requires vector begin/end iterators`, line);
-    }
-    if (
-      beginExpr.method !== "begin" ||
-      endExpr.method !== "end" ||
-      beginExpr.args.length !== 0 ||
-      endExpr.args.length !== 0
-    ) {
-      this.fail(`${callee} requires vector begin/end iterators`, line);
-    }
-    if (!sameReceiver(beginExpr.receiver, endExpr.receiver)) {
-      this.fail(`${callee} requires iterators from the same vector`, line);
-    }
-
-    const receiver = this.evaluateExpr(beginExpr.receiver);
-    const arrayValue = this.expectArray(receiver, line);
-    const store = this.arrays.get(arrayValue.ref);
-    if (store === undefined) {
-      this.fail("invalid array reference", line);
-    }
-    if (store.type.kind !== "VectorType") {
-      this.fail(`${callee} requires a vector range`, line);
-    }
-
-    return {
-      store: store as {
-        values: RuntimeValue[];
-        type: { kind: "VectorType"; elementType: import("@/types").TypeNode };
-      },
-    };
-  }
-
-  private isDescendingSortComparator(expr: ExprNode | undefined, line: number): boolean {
-    if (expr === undefined) {
-      return false;
-    }
-    if (expr.kind === "CallExpr" && expr.callee === "greater" && expr.args.length === 0) {
-      return true;
-    }
-    this.fail("unsupported sort comparator", line);
-  }
-
-  private findOrInsertMapEntry(
-    mapValue: Extract<RuntimeValue, { kind: "map" }>,
+  protected findOrInsertMapEntry(
+    mapValue: Extract<RuntimeValue, { kind: "object"; objectKind: "map" }>,
     key: Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>,
     line: number,
   ): number {
@@ -944,16 +754,16 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     if (existingIndex >= 0) {
       return existingIndex;
     }
-
+    const valueType = mapValueType(mapValue.type);
     const nextEntry = {
       key,
-      value: this.defaultValueForType(mapValue.type.valueType, line),
+      value: this.defaultValueForType(valueType, line),
     };
     mapValue.entries.push(nextEntry);
-    mapValue.entries.sort((left, right) =>
+    mapValue.entries.sort((l, r) =>
       compareSortableValues(
-        this.ensureComparableMapKey(left.key, line),
-        this.ensureComparableMapKey(right.key, line),
+        this.ensureComparableMapKey(l.key, line),
+        this.ensureComparableMapKey(r.key, line),
         false,
         line,
         this.fail.bind(this),
@@ -976,248 +786,4 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
   ): Exclude<RuntimeValue, { kind: "void" | "uninitialized" }> {
     return this.ensureNotVoid(this.ensureInitialized(value, line, "map key"), line);
   }
-}
-
-function compareValues(
-  left: Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>,
-  right: Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>,
-  operator: "==" | "!=" | "<" | "<=" | ">" | ">=",
-  line: number,
-  fail: (message: string, line: number) => never,
-): boolean {
-  if (isNumericRuntimeValue(left) && isNumericRuntimeValue(right)) {
-    const operands = toNumericOperands(left, right, line, fail);
-    return comparePrimitive(operands.left, operands.right, operator);
-  }
-
-  if (left.kind !== right.kind) {
-    fail("type mismatch in comparison", line);
-  }
-
-  switch (left.kind) {
-    case "int":
-      return comparePrimitive(
-        left.value,
-        (right as { kind: "int"; value: bigint }).value,
-        operator,
-      );
-    case "double":
-      return comparePrimitive(
-        left.value,
-        (right as { kind: "double"; value: number }).value,
-        operator,
-      );
-    case "bool":
-      return comparePrimitive(
-        left.value,
-        (right as { kind: "bool"; value: boolean }).value,
-        operator,
-      );
-    case "char":
-      return comparePrimitive(
-        left.value,
-        (right as { kind: "char"; value: string }).value,
-        operator,
-      );
-    case "string":
-      return comparePrimitive(
-        left.value,
-        (right as { kind: "string"; value: string }).value,
-        operator,
-      );
-    case "pointer":
-      return comparePrimitive(
-        left.target,
-        (right as { kind: "pointer"; target: RuntimeLocation | null }).target,
-        operator,
-      );
-    case "array":
-      return fail("array comparison is not supported", line);
-    case "map":
-      return fail("map comparison is not supported", line);
-    case "pair":
-      return fail("pair comparison is not supported", line);
-    case "tuple":
-      return fail("tuple comparison is not supported", line);
-    case "reference":
-      return fail("reference comparison is not supported", line);
-  }
-  return fail("unsupported comparison", line);
-}
-
-function isNumericRuntimeValue(
-  value: Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>,
-): value is Extract<RuntimeValue, { kind: "int" | "double" | "char" }> {
-  return value.kind === "int" || value.kind === "double" || value.kind === "char";
-}
-
-function toNumericOperands(
-  left: Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>,
-  right: Exclude<RuntimeValue, { kind: "void" | "uninitialized" }>,
-  line: number,
-  fail: (message: string, line: number) => never,
-): { mode: "int"; left: bigint; right: bigint } | { mode: "double"; left: number; right: number } {
-  if (!isNumericRuntimeValue(left) || !isNumericRuntimeValue(right)) {
-    fail("type mismatch: expected numeric", line);
-  }
-  if (left.kind === "double" || right.kind === "double") {
-    return {
-      mode: "double",
-      left: left.kind === "double" ? left.value : Number(toIntegerValue(left)),
-      right: right.kind === "double" ? right.value : Number(toIntegerValue(right)),
-    };
-  }
-  return { mode: "int", left: toIntegerValue(left), right: toIntegerValue(right) };
-}
-
-function toIntegerValue(value: Extract<RuntimeValue, { kind: "int" | "double" | "char" }>): bigint {
-  if (value.kind === "int") {
-    return value.value;
-  }
-  return BigInt(value.kind === "char" ? (value.value.codePointAt(0) ?? 0) : value.value);
-}
-
-function comparePrimitive<T extends bigint | number | boolean | string>(
-  left: T,
-  right: T,
-  operator: "==" | "!=" | "<" | "<=" | ">" | ">=",
-): boolean;
-function comparePrimitive(
-  left: RuntimeLocation | null,
-  right: RuntimeLocation | null,
-  operator: "==" | "!=" | "<" | "<=" | ">" | ">=",
-): boolean;
-function comparePrimitive<T extends bigint | number | boolean | string>(
-  left: T | RuntimeLocation | null,
-  right: T | RuntimeLocation | null,
-  operator: "==" | "!=" | "<" | "<=" | ">" | ">=",
-): boolean {
-  if (left === null || right === null || typeof left === "object" || typeof right === "object") {
-    const equal = sameLocation(left as RuntimeLocation | null, right as RuntimeLocation | null);
-    switch (operator) {
-      case "==":
-        return equal;
-      case "!=":
-        return !equal;
-      default:
-        return false;
-    }
-  }
-  switch (operator) {
-    case "==":
-      return left === right;
-    case "!=":
-      return left !== right;
-    case "<":
-      return left < right;
-    case "<=":
-      return left <= right;
-    case ">":
-      return left > right;
-    case ">=":
-      return left >= right;
-  }
-}
-
-function sameLocation(left: RuntimeLocation | null, right: RuntimeLocation | null): boolean {
-  if (left === null || right === null) {
-    return left === right;
-  }
-  if (left.kind !== right.kind) {
-    return false;
-  }
-  switch (left.kind) {
-    case "binding":
-      return right.kind === "binding" && left.scope === right.scope && left.name === right.name;
-    case "array":
-      return right.kind === "array" && left.ref === right.ref && left.index === right.index;
-    case "tuple":
-      return (
-        right.kind === "tuple" &&
-        left.index === right.index &&
-        sameLocation(left.parent, right.parent)
-      );
-    case "string":
-      return (
-        right.kind === "string" &&
-        left.index === right.index &&
-        sameLocation(left.parent, right.parent)
-      );
-    case "map":
-      return (
-        right.kind === "map" &&
-        left.entryIndex === right.entryIndex &&
-        left.access === right.access &&
-        sameLocation(left.parent, right.parent)
-      );
-  }
-  return false;
-}
-
-function sameReceiver(left: ExprNode, right: ExprNode): boolean {
-  if (left.kind !== right.kind) {
-    return false;
-  }
-  switch (left.kind) {
-    case "Identifier":
-      return right.kind === "Identifier" && left.name === right.name;
-    case "IndexExpr":
-      return false;
-    case "Literal":
-      return false;
-    case "CallExpr":
-      return false;
-    case "MethodCallExpr":
-      return false;
-    case "UnaryExpr":
-      return false;
-    case "BinaryExpr":
-      return false;
-    case "AssignExpr":
-      return false;
-    case "ConditionalExpr":
-      return false;
-    case "VectorCtorExpr":
-      return false;
-    case "TupleGetExpr":
-      return false;
-    case "AddressOfExpr":
-      return false;
-    case "DerefExpr":
-      return false;
-  }
-}
-
-function compareSortableValues(
-  left: RuntimeValue,
-  right: RuntimeValue,
-  descending: boolean,
-  line: number,
-  fail: (message: string, line: number) => never,
-): number {
-  const leftValue = sortablePrimitive(left, line, fail);
-  const rightValue = sortablePrimitive(right, line, fail);
-  let result = 0;
-  if (leftValue < rightValue) {
-    result = -1;
-  } else if (leftValue > rightValue) {
-    result = 1;
-  }
-  return descending ? -result : result;
-}
-
-function sortablePrimitive(
-  value: RuntimeValue,
-  line: number,
-  fail: (message: string, line: number) => never,
-): bigint | number | boolean | string {
-  if (
-    value.kind === "int" ||
-    value.kind === "double" ||
-    value.kind === "bool" ||
-    value.kind === "string"
-  ) {
-    return value.value;
-  }
-  fail("sort/reverse/fill supports only primitive vector values", line);
 }

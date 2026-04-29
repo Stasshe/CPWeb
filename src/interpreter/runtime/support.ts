@@ -1,5 +1,7 @@
 import type { RuntimeLocation, RuntimeValue } from "@/runtime/value";
+import { mapKeyType, mapValueType, vectorElementType } from "@/stdlib/template-types";
 import type { ArrayTypeNode, ExprNode, TypeNode } from "@/types";
+import { isArrayType, isMapType, pairType } from "@/types";
 import type { Scope } from "./core";
 import { InterpreterRuntimeTypeSupport } from "./type-support";
 
@@ -136,13 +138,7 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
       this.writeLocation(current.target, value, line);
       return current;
     }
-    if (current.kind === "pair") {
-      return this.assertType(current.type, value, line);
-    }
-    if (current.kind === "map") {
-      return this.assertType(current.type, value, line);
-    }
-    if (current.kind === "tuple") {
+    if (current.kind === "object") {
       return this.assertType(current.type, value, line);
     }
     if (current.kind === "void") {
@@ -199,7 +195,10 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
     }
     const slots: Array<{ assign: (value: RuntimeValue, assignLine: number) => void }> = [];
     for (let i = 0; i < store.values.length; i += 1) {
-      if (store.type.elementType.kind === "ArrayType") {
+      const elementType = isArrayType(store.type)
+        ? store.type.elementType
+        : vectorElementType(store.type);
+      if (elementType.kind === "ArrayType") {
         const nested = store.values[i];
         if (nested !== undefined) {
           slots.push(...this.flattenArrayElements(nested, line));
@@ -208,7 +207,7 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
       }
       slots.push({
         assign: (value: RuntimeValue, assignLine: number) => {
-          store.values[i] = this.castToElementType(value, store.type.elementType, assignLine);
+          store.values[i] = this.castToElementType(value, elementType, assignLine);
         },
       });
     }
@@ -244,46 +243,56 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
         }
         return value.kind === "reference" ? this.readLocation(value.target, line) : value;
       }
-      case "map": {
+      case "object": {
         const parent = this.readLocation(location.parent, line);
-        if (parent.kind !== "map") {
-          this.fail("type mismatch: expected map", line);
+        if (location.objectKind === "map") {
+          if (parent.kind !== "object" || parent.objectKind !== "map") {
+            this.fail("type mismatch: expected map", line);
+          }
+          const entry = parent.entries[location.entryIndex];
+          if (entry === undefined) {
+            this.fail("invalid map entry access", line);
+          }
+          if (location.access === "entry") {
+            return {
+              kind: "object",
+              objectKind: "pair",
+              type: isMapType(parent.type)
+                ? pairType(mapKeyType(parent.type), mapValueType(parent.type))
+                : (location.type as ReturnType<typeof pairType>),
+              first: entry.key,
+              second:
+                entry.value.kind === "reference"
+                  ? this.readLocation(entry.value.target, line)
+                  : entry.value,
+            };
+          }
+          return entry.value.kind === "reference"
+            ? this.readLocation(entry.value.target, line)
+            : entry.value;
         }
-        const entry = parent.entries[location.entryIndex];
-        if (entry === undefined) {
-          this.fail("invalid map entry access", line);
+        if (location.objectKind === "pair") {
+          if (parent.kind !== "object" || parent.objectKind !== "pair") {
+            this.fail("type mismatch: expected pair", line);
+          }
+          const memberValue = location.member === "first" ? parent.first : parent.second;
+          return memberValue.kind === "reference"
+            ? this.readLocation(memberValue.target, line)
+            : memberValue;
         }
-        if (location.access === "entry") {
-          return {
-            kind: "pair",
-            type: parent.type.kind === "MapType"
-              ? {
-                  kind: "PairType",
-                  firstType: parent.type.keyType,
-                  secondType: parent.type.valueType,
-                }
-              : location.type as Extract<TypeNode, { kind: "PairType" }>,
-            first: entry.key,
-            second: entry.value.kind === "reference" ? this.readLocation(entry.value.target, line) : entry.value,
-          };
-        }
-        return entry.value.kind === "reference"
-          ? this.readLocation(entry.value.target, line)
-          : entry.value;
-      }
-      case "tuple": {
-        const parent = this.readLocation(location.parent, line);
-        if (parent.kind !== "tuple") {
+        if (parent.kind !== "object" || parent.objectKind !== "tuple") {
           this.fail("type mismatch: expected tuple", line);
         }
-        const value = parent.values[location.index];
-        if (value === undefined) {
+        const tupleValue = parent.values[location.index];
+        if (tupleValue === undefined) {
           this.fail(
             `tuple index ${location.index.toString()} out of range for tuple of size ${parent.values.length}`,
             line,
           );
         }
-        return value.kind === "reference" ? this.readLocation(value.target, line) : value;
+        return tupleValue.kind === "reference"
+          ? this.readLocation(tupleValue.target, line)
+          : tupleValue;
       }
       case "string": {
         const parent = this.readLocation(location.parent, line);
@@ -329,48 +338,66 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
         store.values[location.index] = this.castToElementType(value, location.type, line);
         return;
       }
-      case "map": {
+      case "object": {
         const current = this.readLocation(location.parent, line);
-        if (current.kind !== "map") {
-          this.fail("type mismatch: expected map", line);
-        }
-        const entry = current.entries[location.entryIndex];
-        if (entry === undefined) {
-          this.fail("invalid map entry access", line);
-        }
-        const nextEntries = current.entries.map((candidate, index) => {
-          if (index !== location.entryIndex) {
-            return candidate;
+        if (location.objectKind === "map") {
+          if (current.kind !== "object" || current.objectKind !== "map") {
+            this.fail("type mismatch: expected map", line);
           }
-          if (location.access === "entry") {
-            const assigned = this.assertType(location.type, value, line);
-            if (assigned.kind !== "pair") {
-              this.fail("map entry assignment requires pair", line);
+          const entry = current.entries[location.entryIndex];
+          if (entry === undefined) {
+            this.fail("invalid map entry access", line);
+          }
+          const nextEntries = current.entries.map((candidate, index) => {
+            if (index !== location.entryIndex) {
+              return candidate;
+            }
+            if (location.access === "entry") {
+              const assigned = this.assertType(location.type, value, line);
+              if (assigned.kind !== "object" || assigned.objectKind !== "pair") {
+                this.fail("map entry assignment requires pair", line);
+              }
+              return {
+                key: this.assertType(mapKeyType(current.type), assigned.first, line),
+                value: this.assertType(mapValueType(current.type), assigned.second, line),
+              };
             }
             return {
-              key: this.assertType(current.type.keyType, assigned.first, line),
-              value: this.assertType(current.type.valueType, assigned.second, line),
+              key: candidate.key,
+              value: this.assertType(location.type, value, line),
             };
+          });
+          this.writeLocation(
+            location.parent,
+            {
+              kind: "object",
+              objectKind: "map",
+              type: current.type,
+              entries: nextEntries,
+            },
+            line,
+          );
+          return;
+        }
+        if (location.objectKind === "pair") {
+          if (current.kind !== "object" || current.objectKind !== "pair") {
+            this.fail("type mismatch: expected pair", line);
           }
-          return {
-            key: candidate.key,
-            value: this.assertType(location.type, value, line),
-          };
-        });
-        this.writeLocation(
-          location.parent,
-          {
-            kind: "map",
-            type: current.type,
-            entries: nextEntries,
-          },
-          line,
-        );
-        return;
-      }
-      case "tuple": {
-        const current = this.readLocation(location.parent, line);
-        if (current.kind !== "tuple") {
+          const assigned = this.assertType(location.type, value, line);
+          this.writeLocation(
+            location.parent,
+            {
+              kind: "object",
+              objectKind: "pair",
+              type: current.type,
+              first: location.member === "first" ? assigned : current.first,
+              second: location.member === "second" ? assigned : current.second,
+            },
+            line,
+          );
+          return;
+        }
+        if (current.kind !== "object" || current.objectKind !== "tuple") {
           this.fail("type mismatch: expected tuple", line);
         }
         if (location.index < 0 || location.index >= current.values.length) {
@@ -384,7 +411,8 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
         this.writeLocation(
           location.parent,
           {
-            kind: "tuple",
+            kind: "object",
+            objectKind: "tuple",
             type: current.type,
             values: nextValues,
           },
@@ -423,11 +451,7 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
         return { kind: "PrimitiveType", name: "char" };
       case "string":
         return { kind: "PrimitiveType", name: "string" };
-      case "pair":
-        return value.type;
-      case "map":
-        return value.type;
-      case "tuple":
+      case "object":
         return value.type;
       case "array":
         return value.type;

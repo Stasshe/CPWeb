@@ -1,10 +1,10 @@
 "use client";
 
-import { usePlaygroundSession } from "@web/hooks/use-playground-session";
-import { EditorPane } from "@web/components/editor-pane";
 import { DebugSidebar } from "@web/components/debug-sidebar";
+import { EditorPane } from "@web/components/editor-pane";
 import { IOPanels } from "@web/components/io-panels";
 import { LoadingScreen } from "@web/components/loading-screen";
+import { usePlaygroundSession } from "@web/hooks/use-playground-session";
 
 export default function Home() {
   const {

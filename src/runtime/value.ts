@@ -1,8 +1,10 @@
 import type {
+  IteratorTypeNode,
   MapTypeNode,
   PairTypeNode,
   PrimitiveTypeNode,
   ReferenceTypeNode,
+  TemplateInstanceTypeNode,
   TupleTypeNode,
   TypeNode,
   VectorTypeNode,
@@ -12,14 +14,40 @@ export type RuntimeLocation =
   | { kind: "binding"; scope: Map<string, RuntimeValue>; name: string; type: TypeNode }
   | { kind: "array"; ref: number; index: number; type: TypeNode }
   | {
-      kind: "map";
+      kind: "object";
       parent: RuntimeLocation;
+      objectKind: "map";
       entryIndex: number;
       type: TypeNode;
       access: "entry" | "value";
     }
-  | { kind: "tuple"; parent: RuntimeLocation; index: number; type: TypeNode }
+  | {
+      kind: "object";
+      parent: RuntimeLocation;
+      objectKind: "pair";
+      member: "first" | "second";
+      type: TypeNode;
+    }
+  | { kind: "object"; parent: RuntimeLocation; objectKind: "tuple"; index: number; type: TypeNode }
   | { kind: "string"; parent: RuntimeLocation; index: number };
+
+export type RuntimeObjectValue =
+  | { kind: "object"; objectKind: "vector"; type: VectorTypeNode; ref: number }
+  | {
+      kind: "object";
+      objectKind: "map";
+      type: MapTypeNode;
+      entries: Array<{ key: RuntimeValue; value: RuntimeValue }>;
+    }
+  | {
+      kind: "object";
+      objectKind: "pair";
+      type: PairTypeNode;
+      first: RuntimeValue;
+      second: RuntimeValue;
+    }
+  | { kind: "object"; objectKind: "tuple"; type: TupleTypeNode; values: RuntimeValue[] }
+  | { kind: "object"; objectKind: "iterator"; type: IteratorTypeNode; ref: number; index: number };
 
 export type RuntimeValue =
   | { kind: "int"; value: bigint }
@@ -27,10 +55,8 @@ export type RuntimeValue =
   | { kind: "bool"; value: boolean }
   | { kind: "char"; value: string }
   | { kind: "string"; value: string }
-  | { kind: "map"; type: MapTypeNode; entries: Array<{ key: RuntimeValue; value: RuntimeValue }> }
-  | { kind: "pair"; type: PairTypeNode; first: RuntimeValue; second: RuntimeValue }
-  | { kind: "tuple"; type: TupleTypeNode; values: RuntimeValue[] }
-  | { kind: "array"; ref: number; type: VectorTypeNode | Exclude<TypeNode, PrimitiveTypeNode> }
+  | RuntimeObjectValue
+  | { kind: "array"; ref: number; type: Exclude<TypeNode, PrimitiveTypeNode | TemplateInstanceTypeNode> }
   | { kind: "pointer"; pointeeType: TypeNode; target: RuntimeLocation | null }
   | { kind: "reference"; type: ReferenceTypeNode; target: RuntimeLocation }
   | { kind: "void" }
@@ -72,14 +98,21 @@ export function stringifyValue(value: RuntimeValue): string {
       return value.value;
     case "string":
       return value.value;
-    case "pair":
-      return `(${stringifyValue(value.first)}, ${stringifyValue(value.second)})`;
-    case "map":
-      return `{${value.entries
-        .map((entry) => `${stringifyValue(entry.key)}: ${stringifyValue(entry.value)}`)
-        .join(", ")}}`;
-    case "tuple":
-      return `(${value.values.map((element) => stringifyValue(element)).join(", ")})`;
+    case "object":
+      switch (value.objectKind) {
+        case "pair":
+          return `(${stringifyValue(value.first)}, ${stringifyValue(value.second)})`;
+        case "map":
+          return `{${value.entries
+            .map((entry) => `${stringifyValue(entry.key)}: ${stringifyValue(entry.value)}`)
+            .join(", ")}}`;
+        case "tuple":
+          return `(${value.values.map((element) => stringifyValue(element)).join(", ")})`;
+        case "vector":
+          return "<vector>";
+        case "iterator":
+          return "<iterator>";
+      }
     case "void":
       return "";
     case "array":

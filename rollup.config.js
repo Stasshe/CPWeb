@@ -1,26 +1,26 @@
-import { nodeResolve } from '@rollup/plugin-node-resolve';
-import typescript from '@rollup/plugin-typescript';
+import { nodeResolve } from "@rollup/plugin-node-resolve";
+import typescript from "@rollup/plugin-typescript";
 
 const config = {
-  input: 'src/index.ts',
+  input: "src/index.ts",
   output: [
     {
-      file: 'dist/index.js',
-      format: 'cjs',
+      file: "dist/index.js",
+      format: "cjs",
       sourcemap: true,
     },
     {
-      file: 'dist/index.esm.js',
-      format: 'esm',
+      file: "dist/index.esm.js",
+      format: "esm",
       sourcemap: true,
     },
   ],
   plugins: [
     nodeResolve({
-      extensions: ['.ts', '.js'],
+      extensions: [".ts", ".js"],
     }),
     typescript({
-      tsconfig: 'tsconfig.json',
+      tsconfig: "tsconfig.json",
     }),
   ],
   external: [],

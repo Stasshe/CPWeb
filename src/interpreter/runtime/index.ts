@@ -1,6 +1,7 @@
 import { toRuntimeErrorInfo } from "@/diagnostics";
 import type { RuntimeTrap } from "@/runtime/errors";
 import type { RuntimeValue } from "@/runtime/value";
+import { vectorElementType } from "@/stdlib/template-types";
 import type {
   DebugExecutionRange,
   DebugInfo,
@@ -8,7 +9,7 @@ import type {
   FrameView,
   RuntimeErrorInfo,
 } from "@/types";
-import { typeToString } from "@/types";
+import { isVectorType, typeToString } from "@/types";
 import type { ArrayStore, Scope } from "./core";
 import { InterpreterRuntimeSupport } from "./support";
 
@@ -52,8 +53,10 @@ export function buildDebugInfoView(
     globalVars: serializeScope(globals),
     arrays: Array.from(arrays.entries()).map(([ref, store]) => ({
       ref,
-      elementType: typeToString(store.type.elementType),
-      dynamic: store.type.kind === "VectorType",
+      elementType: typeToString(
+        isVectorType(store.type) ? vectorElementType(store.type) : store.type.elementType,
+      ),
+      dynamic: isVectorType(store.type),
       values: store.values.map((value) => serializeValue(value)),
     })),
     watchList: [],

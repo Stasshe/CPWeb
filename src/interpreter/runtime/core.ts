@@ -10,8 +10,8 @@ import type {
   FunctionDeclNode,
   ProgramNode,
   SourceRange,
+  TemplateFunctionDeclNode,
   TypeNode,
-  VectorDeclNode,
 } from "@/types";
 import { isPrimitiveType } from "@/types";
 
@@ -60,6 +60,8 @@ export abstract class InterpreterRuntimeCore {
   protected readonly globals: Scope = new Map();
 
   protected readonly functions = new Map<string, FunctionDeclNode>();
+
+  protected readonly templateFunctions = new Map<string, TemplateFunctionDeclNode>();
 
   protected readonly output = { stdout: "", stderr: "" };
 
@@ -151,41 +153,6 @@ export abstract class InterpreterRuntimeCore {
     this.defineInScope(scope, decl.name, arrayValue, decl.line);
   }
 
-  protected defineVectorDecl(decl: VectorDeclNode, scope: Scope): void {
-    const args = decl.constructorArgs.map((arg) => this.evaluateExpr(arg));
-    const vectorValue = this.constructVectorValue(decl.type, args, decl.line);
-    this.defineInScope(scope, decl.name, vectorValue, decl.line);
-  }
-
-  protected constructVectorValue(
-    type: VectorDeclNode["type"],
-    args: RuntimeValue[],
-    line: number,
-  ): RuntimeValue {
-    let values: RuntimeValue[] = [];
-
-    if (args.length === 1) {
-      const size = this.expectInt(args[0] as RuntimeValue, line).value;
-      if (size < 0n) {
-        this.fail("vector size must be non-negative", line);
-      }
-      values = Array.from({ length: Number(size) }, () =>
-        this.defaultValueForType(type.elementType, line),
-      );
-    } else if (args.length === 2) {
-      const size = this.expectInt(args[0] as RuntimeValue, line).value;
-      if (size < 0n) {
-        this.fail("vector size must be non-negative", line);
-      }
-      const fillValue = this.castToElementType(args[1] as RuntimeValue, type.elementType, line);
-      values = Array.from({ length: Number(size) }, () => fillValue);
-    } else if (args.length > 2) {
-      this.fail("too many arguments for vector constructor", line);
-    }
-
-    return this.allocateArray(type, values);
-  }
-
   protected expectInt(value: RuntimeValue, line: number): Extract<RuntimeValue, { kind: "int" }> {
     const initialized = this.ensureInitialized(value, line, "value");
     if (initialized.kind === "char") {
@@ -240,6 +207,17 @@ export abstract class InterpreterRuntimeCore {
     const initialized = this.ensureInitialized(value, line, "value");
     if (initialized.kind !== "array") {
       this.fail("type mismatch: expected array/vector", line);
+    }
+    return initialized;
+  }
+
+  protected expectVector(
+    value: RuntimeValue,
+    line: number,
+  ): Extract<RuntimeValue, { kind: "object"; objectKind: "vector" }> {
+    const initialized = this.ensureInitialized(value, line, "value");
+    if (initialized.kind !== "object" || initialized.objectKind !== "vector") {
+      this.fail("type mismatch: expected vector", line);
     }
     return initialized;
   }
@@ -428,12 +406,19 @@ export abstract class InterpreterRuntimeCore {
   ): void;
 
   protected allocateArray(
-    type: import("@/types").ArrayTypeNode | import("@/types").VectorTypeNode,
+    type: import("@/types").ArrayTypeNode,
     values: RuntimeValue[],
   ): RuntimeValue {
     const ref = this.nextArrayRef;
     this.nextArrayRef += 1;
     this.arrays.set(ref, { type, values });
     return { kind: "array", ref, type };
+  }
+
+  protected allocateVector(type: import("@/types").VectorTypeNode, values: RuntimeValue[]): RuntimeValue {
+    const ref = this.nextArrayRef;
+    this.nextArrayRef += 1;
+    this.arrays.set(ref, { type, values });
+    return { kind: "object", objectKind: "vector", ref, type };
   }
 }

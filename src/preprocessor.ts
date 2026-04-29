@@ -18,7 +18,7 @@ type MacroDefinition = ObjectMacro | FunctionMacro;
 type PreprocessResult = { ok: true; source: string } | { ok: false; errors: CompileError[] };
 
 const INCLUDE_PATTERN =
-  /^\s*#\s*include\s*<(bits\/stdc\+\+\.h|iostream|vector|map)>\s*$/;
+  /^\s*#\s*include\s*<(bits\/stdc\+\+\.h|algorithm|functional|iostream|map|tuple|utility|vector)>\s*$/;
 const DEFINE_PATTERN = /^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)(\(([^)]*)\))?\s*(.*)$/;
 const USING_ALIAS_PATTERN = /^\s*using\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*;\s*$/;
 const CONST_DECL_PATTERN =
@@ -216,7 +216,6 @@ function normalizeCompatibilitySyntax(line: string): string {
   result = result.replace(/\bios_base::/g, "");
   result = result.replace(/\bios::/g, "");
   result = result.replace(/\bsigned\s+main\s*\(/, "int main(");
-  result = result.replace(/\bgreater\s*<\s*>\s*\(\s*\)/g, "greater<int>()");
   result = result.replace(/(\b[A-Za-z_][A-Za-z0-9_]*\b)\s*>>=\s*([^;]+);/g, "$1 = $1 >> ($2);");
   result = result.replace(/(\b[A-Za-z_][A-Za-z0-9_]*\b)\s*<<=\s*([^;]+);/g, "$1 = $1 << ($2);");
   result = normalizeScientificIntegerLiterals(result);
@@ -226,7 +225,10 @@ function normalizeCompatibilitySyntax(line: string): string {
 }
 
 function stripConstKeyword(line: string): string {
-  return line.replace(/^\s*const\s+(?=(int|long\s+long|double|bool|char|string|vector)\b)/, "");
+  return line.replace(
+    /^\s*const\s+(?=(int|long\s+long|double|bool|char|string|vector|map|pair|tuple)\b)/,
+    "",
+  );
 }
 
 function normalizeCinCommaStatement(line: string): string {

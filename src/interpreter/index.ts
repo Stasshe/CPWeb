@@ -1,6 +1,7 @@
 import { BreakSignal, ContinueSignal, ReturnSignal, RuntimeTrap } from "@/runtime/errors";
 import type { RuntimeValue } from "@/runtime/value";
 import { stringifyValue, uninitializedForType } from "@/runtime/value";
+import { mapKeyType, mapValueType, vectorElementType } from "@/stdlib/template-types";
 import type {
   DebugInfo,
   DebugState,
@@ -11,7 +12,9 @@ import type {
   RunResult,
   RuntimeErrorInfo,
   StatementNode,
+  TemplateFunctionDeclNode,
 } from "@/types";
+import { isVectorType, pairType } from "@/types";
 import type { RuntimeArgument } from "./evaluator";
 import { InterpreterEvaluator } from "./evaluator";
 import { buildDebugInfoView, type InterpreterOptions, PauseTrap, toRuntimeError } from "./runtime";
@@ -33,10 +36,14 @@ class Interpreter extends InterpreterEvaluator {
   run(): RunResult {
     try {
       for (const fn of this.program.functions) {
-        if (this.functions.has(fn.name)) {
+        if (this.functions.has(fn.name) || this.templateFunctions.has(fn.name)) {
           this.fail(`redefinition of function '${fn.name}'`, fn.line);
         }
-        this.functions.set(fn.name, fn);
+        if (fn.kind === "TemplateFunctionDecl") {
+          this.templateFunctions.set(fn.name, fn);
+        } else {
+          this.functions.set(fn.name, fn);
+        }
       }
 
       for (const decl of this.program.globals) {
@@ -149,12 +156,7 @@ class Interpreter extends InterpreterEvaluator {
       return;
     }
 
-    if (decl.kind === "ArrayDecl") {
-      this.defineArrayDecl(decl, this.globals);
-      return;
-    }
-
-    this.defineVectorDecl(decl, this.globals);
+    this.defineArrayDecl(decl, this.globals);
   }
 
   private executeBlock(block: { statements: StatementNode[] }, createScope: boolean): void {
@@ -194,9 +196,6 @@ class Interpreter extends InterpreterEvaluator {
       }
       case "ArrayDecl":
         this.defineArrayDecl(stmt, this.currentScope());
-        return;
-      case "VectorDecl":
-        this.defineVectorDecl(stmt, this.currentScope());
         return;
       case "RangeForStmt":
         this.executeRangeFor(stmt);
@@ -385,18 +384,33 @@ class Interpreter extends InterpreterEvaluator {
     line: number,
   ): Array<Extract<RuntimeValue, { kind: "reference" }>> {
     const value = this.ensureInitialized(this.evaluateExpr(source), line, "value");
-    if (value.kind === "array") {
+    if (value.kind === "object" && value.objectKind === "vector") {
+      const elementType = vectorElementType(value.type);
       const store = this.arrays.get(value.ref);
       if (store === undefined) {
         this.fail("invalid array reference", line);
       }
       return store.values.map((_entry, index) => ({
         kind: "reference",
-        type: { kind: "ReferenceType", referredType: store.type.elementType },
-        target: { kind: "array", ref: value.ref, index, type: store.type.elementType },
+        type: { kind: "ReferenceType", referredType: elementType },
+        target: { kind: "array", ref: value.ref, index, type: elementType },
       }));
     }
-    if (value.kind === "map") {
+    if (value.kind === "array") {
+      const store = this.arrays.get(value.ref);
+      if (store === undefined) {
+        this.fail("invalid array reference", line);
+      }
+      const elementType = isVectorType(store.type)
+        ? vectorElementType(store.type)
+        : store.type.elementType;
+      return store.values.map((_entry, index) => ({
+        kind: "reference",
+        type: { kind: "ReferenceType", referredType: elementType },
+        target: { kind: "array", ref: value.ref, index, type: elementType },
+      }));
+    }
+    if (value.kind === "object" && value.objectKind === "map") {
       if (
         source.kind !== "Identifier" &&
         source.kind !== "IndexExpr" &&
@@ -409,21 +423,14 @@ class Interpreter extends InterpreterEvaluator {
         kind: "reference",
         type: {
           kind: "ReferenceType",
-          referredType: {
-            kind: "PairType",
-            firstType: value.type.keyType,
-            secondType: value.type.valueType,
-          },
+          referredType: pairType(mapKeyType(value.type), mapValueType(value.type)),
         },
         target: {
-          kind: "map",
+          kind: "object",
+          objectKind: "map",
           parent,
           entryIndex,
-          type: {
-            kind: "PairType",
-            firstType: value.type.keyType,
-            secondType: value.type.valueType,
-          },
+          type: pairType(mapKeyType(value.type), mapValueType(value.type)),
           access: "entry",
         },
       }));

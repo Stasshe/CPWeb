@@ -1,3 +1,4 @@
+import { getBuiltinTemplateComparatorSpec } from "@/stdlib/metadata";
 import type {
   AddressOfExprNode,
   AssignExprNode,
@@ -5,9 +6,9 @@ import type {
   ConditionalExprNode,
   DerefExprNode,
   ExprNode,
-  TupleGetExprNode,
+  TemplateArgNode,
+  TemplateIdExprNode,
   UnaryExprNode,
-  VectorCtorExprNode,
 } from "@/types";
 import { BaseParser, isAssignTarget } from "./base";
 
@@ -39,17 +40,20 @@ export abstract class ExpressionParser extends BaseParser {
           endLine: 1,
           endCol: 1,
         };
-      const segmentParser = new StreamOperandParser([
-        ...segment,
-        {
-          kind: "eof",
-          text: "<eof>",
-          line: eof.line,
-          col: eof.col,
-          endLine: eof.endLine,
-          endCol: eof.endCol,
-        },
-      ]);
+      const segmentParser = new StreamOperandParser(
+        [
+          ...segment,
+          {
+            kind: "eof",
+            text: "<eof>",
+            line: eof.line,
+            col: eof.col,
+            endLine: eof.endLine,
+            endCol: eof.endCol,
+          },
+        ],
+        this.activeTypeParams,
+      );
       const parsed = segmentParser.parseOperand();
       if (parsed === null) {
         this.errors.push(...segmentParser.getErrors());
@@ -222,17 +226,25 @@ export abstract class ExpressionParser extends BaseParser {
           }
         }
 
-        if (expr.kind !== "Identifier") {
+        if (expr.kind !== "Identifier" && expr.kind !== "TemplateIdExpr") {
           this.errorAt(this.previous(), "invalid function call target");
           break;
         }
 
-        expr = {
-          kind: "CallExpr",
-          callee: expr.name,
-          args,
-          ...this.rangeToPrevious(expr),
-        };
+        expr =
+          expr.kind === "Identifier"
+            ? {
+                kind: "CallExpr",
+                callee: expr.name,
+                args,
+                ...this.rangeToPrevious(expr),
+              }
+            : {
+                kind: "TemplateCallExpr",
+                callee: expr,
+                args,
+                ...this.rangeToPrevious(expr),
+              };
         continue;
       }
 
@@ -255,8 +267,8 @@ export abstract class ExpressionParser extends BaseParser {
         if (methodToken === null) {
           break;
         }
-        const args: ExprNode[] = [];
         if (this.matchSymbol("(")) {
+          const args: ExprNode[] = [];
           if (!this.matchSymbol(")")) {
             while (true) {
               args.push(this.parseExpression());
@@ -268,12 +280,19 @@ export abstract class ExpressionParser extends BaseParser {
               }
             }
           }
+          expr = {
+            kind: "MethodCallExpr",
+            receiver: expr,
+            method: methodToken.text,
+            args,
+            ...this.rangeToPrevious(expr),
+          };
+          continue;
         }
         expr = {
-          kind: "MethodCallExpr",
+          kind: "MemberAccessExpr",
           receiver: expr,
-          method: methodToken.text,
-          args,
+          member: methodToken.text,
           ...this.rangeToPrevious(expr),
         };
         continue;
@@ -298,19 +317,9 @@ export abstract class ExpressionParser extends BaseParser {
   }
 
   private parsePrimary(): ExprNode | null {
-    const greaterComparator = this.parseGreaterComparator();
-    if (greaterComparator !== null) {
-      return greaterComparator;
-    }
-
-    const vectorCtor = this.parseVectorCtorExpr();
-    if (vectorCtor !== null) {
-      return vectorCtor;
-    }
-
-    const tupleGet = this.parseTupleGetExpr();
-    if (tupleGet !== null) {
-      return tupleGet;
+    const templateId = this.parseTemplateIdExpr();
+    if (templateId !== null) {
+      return templateId;
     }
 
     if (this.match("number")) {
@@ -388,130 +397,118 @@ export abstract class ExpressionParser extends BaseParser {
     return null;
   }
 
-  private parseVectorCtorExpr(): ExprNode | null {
+  private parseTemplateIdExpr(): TemplateIdExprNode | null {
     const startIndex = this.index;
-    const startToken = this.tokens[startIndex];
-    if (!this.checkKeyword("vector") || startToken === undefined) {
+    if (this.tokens[startIndex] === undefined) {
       return null;
     }
-
-    const type = this.parseVectorType();
-    if (type === null) {
-      this.index = startIndex;
-      return null;
-    }
-    if (!this.matchSymbol("(")) {
-      this.index = startIndex;
-      return null;
-    }
-
-    const args: ExprNode[] = [];
-    if (!this.matchSymbol(")")) {
-      while (true) {
-        args.push(this.parseExpression());
-        if (this.matchSymbol(")")) {
-          break;
-        }
-        if (!this.consumeSymbol(",", "expected ',' or ')' in vector constructor args")) {
-          return null;
-        }
-      }
-    }
-
-    const node: VectorCtorExprNode = {
-      kind: "VectorCtorExpr",
-      type,
-      args,
-      ...this.rangeToPrevious(startToken),
-    };
-    return node;
-  }
-
-  private parseTupleGetExpr(): ExprNode | null {
     const token = this.peek();
-    const next = this.tokens[this.index + 1];
-    if (
-      token?.kind !== "identifier" ||
-      token.text !== "get" ||
-      next?.kind !== "symbol" ||
-      next.text !== "<"
-    ) {
+    if (!this.looksLikeTemplateCallStart(startIndex) || token.kind === "eof") {
       return null;
     }
 
     this.advance();
-    const getToken = this.previous();
-    if (!this.consumeSymbol("<", "expected '<' after get")) {
+    const templateName = token.text;
+    if (!this.consumeSymbol("<", `expected '<' after ${templateName}`)) {
       return null;
     }
-    const indexToken = this.consume("number", "expected tuple index in get");
-    if (indexToken === null) {
+    const templateArgs = this.parseTemplateExprArguments(templateName);
+    if (templateArgs === null) {
       return null;
     }
-    if (/[.eE]/.test(indexToken.text)) {
-      this.errorAt(indexToken, "tuple index must be an integer literal");
+    if (!this.consumeTypeClose(`expected '>' after ${templateName}`)) {
       return null;
     }
-    const index = Number(indexToken.text);
-    if (!Number.isSafeInteger(index) || index < 0) {
-      this.errorAt(indexToken, "tuple index must be a non-negative integer literal");
-      return null;
-    }
-    if (!this.consumeSymbol(">", "expected '>' after tuple index")) {
-      return null;
-    }
-    if (!this.consumeSymbol("(", "expected '(' after get<I>")) {
-      return null;
-    }
-    const tuple = this.parseExpression();
-    if (!this.consumeSymbol(")", "expected ')' after get argument")) {
-      return null;
-    }
-    const node: TupleGetExprNode = {
-      kind: "TupleGetExpr",
-      tuple,
-      index,
-      ...this.rangeFromNode(getToken, this.previous()),
-    };
-    return node;
-  }
-
-  private parseGreaterComparator(): ExprNode | null {
-    const token = this.peek();
-    const next = this.tokens[this.index + 1];
-    if (
-      token?.kind !== "identifier" ||
-      token.text !== "greater" ||
-      next?.kind !== "symbol" ||
-      next.text !== "<"
-    ) {
-      return null;
-    }
-
-    this.advance();
-    if (!this.consumeSymbol("<", "expected '<' after greater")) {
-      return null;
-    }
-    const type = this.parsePrimitiveType();
-    if (type === null) {
-      return null;
-    }
-    if (!this.consumeSymbol(">", "expected '>' after comparator type")) {
-      return null;
-    }
-    if (!this.consumeSymbol("(", "expected '(' after comparator type")) {
-      return null;
-    }
-    if (!this.consumeSymbol(")", "expected ')' after comparator")) {
-      return null;
-    }
-
     return {
-      kind: "CallExpr",
-      callee: "greater",
-      args: [],
+      kind: "TemplateIdExpr",
+      template: templateName,
+      templateArgs,
       ...this.rangeToPrevious(token),
     };
+  }
+
+  private parseTemplateExprArguments(templateName: string): TemplateArgNode[] | null {
+    const args: TemplateArgNode[] = [];
+    if (getBuiltinTemplateComparatorSpec(templateName) !== null && this.checkSymbol(">")) {
+      return args;
+    }
+    while (true) {
+      if (this.checkTypeStart()) {
+        const typeArg = this.parseType();
+        if (typeArg === null) {
+          return null;
+        }
+        args.push({ kind: "TypeTemplateArg", type: typeArg });
+      } else if (this.peek().kind === "number") {
+        const numberToken = this.advance();
+        if (/[.eE]/.test(numberToken.text)) {
+          this.errorAt(numberToken, `${templateName} template argument must be an integer or type`);
+          return null;
+        }
+        const value = Number(numberToken.text);
+        if (!Number.isSafeInteger(value) || value < 0) {
+          this.errorAt(numberToken, "template integer argument must be a non-negative integer");
+          return null;
+        }
+        args.push({ kind: "IntTemplateArg", value });
+      } else {
+        this.errorAtCurrent(`expected template argument in ${templateName}`);
+        return null;
+      }
+
+      this.splitShiftCloseToken();
+      if (this.checkSymbol(">")) {
+        break;
+      }
+      if (!this.consumeSymbol(",", `expected ',' in ${templateName} template argument list`)) {
+        return null;
+      }
+    }
+    return args;
+  }
+
+  private looksLikeTemplateCallStart(startIndex: number): boolean {
+    const startToken = this.tokens[startIndex];
+    const next = this.tokens[startIndex + 1];
+    if (
+      startToken === undefined ||
+      !(
+        startToken.kind === "identifier" ||
+        startToken.kind === "keyword"
+      ) ||
+      next?.kind !== "symbol" ||
+      next.text !== "<"
+    ) {
+      return false;
+    }
+
+    if (getBuiltinTemplateComparatorSpec(startToken.text) !== null) {
+      return true;
+    }
+
+    let depth = 0;
+    let cursor = startIndex + 1;
+    while (cursor < this.tokens.length) {
+      const token = this.tokens[cursor];
+      if (token === undefined) {
+        return false;
+      }
+      if (token.kind === "symbol") {
+        if (token.text === "<") {
+          depth += 1;
+        } else if (token.text === ">>") {
+          depth -= 2;
+        } else if (token.text === ">") {
+          depth -= 1;
+        }
+        if (depth <= 0) {
+          const after = this.tokens[cursor + 1];
+          return after?.kind === "symbol" && after.text === "(";
+        }
+      }
+      cursor += 1;
+    }
+    return false;
   }
 
   private parseLeftAssociative(parseOperand: () => ExprNode, operators: string[]): ExprNode {
@@ -556,6 +553,11 @@ export abstract class ExpressionParser extends BaseParser {
 }
 
 class StreamOperandParser extends ExpressionParser {
+  constructor(tokens: import("@/types").Token[], typeParams: string[] = []) {
+    super(tokens);
+    this.activeTypeParams = typeParams;
+  }
+
   parseOperand(): ExprNode | null {
     const expr = this.parseExpression();
     if (this.errors.length > 0) {

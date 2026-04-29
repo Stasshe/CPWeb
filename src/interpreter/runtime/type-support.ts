@@ -1,7 +1,27 @@
 import type { RuntimeValue } from "@/runtime/value";
 import { stringifyValue } from "@/runtime/value";
+import {
+  mapKeyType,
+  mapValueType,
+  pairFirstType,
+  pairSecondType,
+  tupleElementTypes,
+  vectorElementType,
+} from "@/stdlib/template-types";
 import type { DebugValueView, TypeNode } from "@/types";
-import { isPointerType, isPrimitiveType, isReferenceType, typeToString } from "@/types";
+import {
+  isArrayType,
+  isMapType,
+  isPairType,
+  isPointerType,
+  isPrimitiveType,
+  isReferenceType,
+  isIteratorType,
+  isTemplateInstanceType,
+  isTupleType,
+  isVectorType,
+  typeToString,
+} from "@/types";
 import type { Scope } from "./core";
 import { InterpreterRuntimeCore } from "./core";
 
@@ -29,30 +49,38 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       }
       this.fail("element type cannot be void", line);
     }
-    if (type.kind === "VectorType") {
-      return this.allocateArray(type, []);
+    if (isVectorType(type)) {
+      return this.allocateVector(type, []);
     }
-    if (type.kind === "MapType") {
+    if (isMapType(type)) {
       return {
-        kind: "map",
+        kind: "object",
+        objectKind: "map",
         type,
         entries: [],
       };
     }
-    if (type.kind === "PairType") {
+    if (isPairType(type)) {
       return {
-        kind: "pair",
+        kind: "object",
+        objectKind: "pair",
         type,
-        first: this.defaultValueForType(type.firstType, line),
-        second: this.defaultValueForType(type.secondType, line),
+        first: this.defaultValueForType(pairFirstType(type), line),
+        second: this.defaultValueForType(pairSecondType(type), line),
       };
     }
-    if (type.kind === "TupleType") {
+    if (isTupleType(type)) {
       return {
-        kind: "tuple",
+        kind: "object",
+        objectKind: "tuple",
         type,
-        values: type.elementTypes.map((elementType) => this.defaultValueForType(elementType, line)),
+        values: tupleElementTypes(type).map((elementType) =>
+          this.defaultValueForType(elementType, line),
+        ),
       };
+    }
+    if (isTemplateInstanceType(type)) {
+      this.fail(`default value is not defined for '${typeToString(type)}'`, line);
     }
     this.fail("fixed array value requires dimensions", line);
   }
@@ -104,76 +132,112 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
     }
 
-    if (type.kind === "PairType") {
+    if (isPairType(type)) {
       if (value.kind === "uninitialized") {
         return { kind: "uninitialized", expectedType: type };
       }
-      if (value.kind !== "pair") {
+      if (value.kind !== "object" || value.objectKind !== "pair") {
         this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
       }
       return {
-        kind: "pair",
+        kind: "object",
+        objectKind: "pair",
         type,
-        first: this.assertType(type.firstType, value.first, line),
-        second: this.assertType(type.secondType, value.second, line),
+        first: this.assertType(pairFirstType(type), value.first, line),
+        second: this.assertType(pairSecondType(type), value.second, line),
       };
     }
 
-    if (type.kind === "MapType") {
+    if (isMapType(type)) {
       if (value.kind === "uninitialized") {
         return { kind: "uninitialized", expectedType: type };
       }
-      if (value.kind !== "map") {
+      if (value.kind !== "object" || value.objectKind !== "map") {
         this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
       }
       return {
-        kind: "map",
+        kind: "object",
+        objectKind: "map",
         type,
         entries: value.entries.map((entry) => ({
-          key: this.assertType(type.keyType, entry.key, line),
-          value: this.assertType(type.valueType, entry.value, line),
+          key: this.assertType(mapKeyType(type), entry.key, line),
+          value: this.assertType(mapValueType(type), entry.value, line),
         })),
       };
     }
 
-    if (type.kind === "TupleType") {
+    if (isTupleType(type)) {
       if (value.kind === "uninitialized") {
         return { kind: "uninitialized", expectedType: type };
       }
-      if (value.kind !== "tuple") {
+      if (value.kind !== "object" || value.objectKind !== "tuple") {
         this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
       }
-      if (value.values.length !== type.elementTypes.length) {
+      const elementTypes = tupleElementTypes(type);
+      if (value.values.length !== elementTypes.length) {
         this.fail(
           `cannot convert '${this.typeToRuntimeString(value.type)}' to '${this.typeToRuntimeString(type)}'`,
           line,
         );
       }
       return {
-        kind: "tuple",
+        kind: "object",
+        objectKind: "tuple",
         type,
-        values: type.elementTypes.map((elementType, index) =>
+        values: elementTypes.map((elementType, index) =>
           this.assertType(elementType, value.values[index] as RuntimeValue, line),
         ),
       };
+    }
+    if (isIteratorType(type)) {
+      if (value.kind === "uninitialized") {
+        return { kind: "uninitialized", expectedType: type };
+      }
+      if (
+        value.kind !== "object" ||
+        value.objectKind !== "iterator" ||
+        !this.sameType(type, value.type)
+      ) {
+        const actualType =
+          value.kind === "object" && value.objectKind === "iterator"
+            ? this.typeToRuntimeString(value.type)
+            : value.kind;
+        this.fail(
+          `cannot convert '${actualType}' to '${this.typeToRuntimeString(type)}'`,
+          line,
+        );
+      }
+      return value;
+    }
+
+    if (isVectorType(type)) {
+      if (value.kind !== "object" || value.objectKind !== "vector") {
+        this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
+      }
+      if (!this.sameType(type, value.type)) {
+        this.fail(
+          `cannot convert '${this.typeToRuntimeString(value.type)}' to '${this.typeToRuntimeString(type)}'`,
+          line,
+        );
+      }
+      return value;
     }
 
     if (value.kind !== "array") {
       this.fail(`cannot convert '${value.kind}' to '${this.typeKindName(type)}'`, line);
     }
 
-    if (type.kind === "VectorType" && value.type.kind !== "VectorType") {
-      this.fail("cannot convert 'array' to 'vector'", line);
-    }
-
-    if (type.kind === "ArrayType" && value.type.kind !== "ArrayType") {
+    if (isArrayType(type) && !isArrayType(value.type)) {
       this.fail("cannot convert 'vector' to 'array'", line);
     }
 
     if (
-      (type.kind === "ArrayType" || type.kind === "VectorType") &&
-      (value.type.kind === "ArrayType" || value.type.kind === "VectorType") &&
-      !this.sameType(type.elementType, value.type.elementType)
+      (isArrayType(type) || isVectorType(type)) &&
+      (isArrayType(value.type) || isVectorType(value.type)) &&
+      !this.sameType(
+        isArrayType(type) ? type.elementType : vectorElementType(type),
+        isArrayType(value.type) ? value.type.elementType : vectorElementType(value.type),
+      )
     ) {
       this.fail(
         `cannot convert '${this.typeToRuntimeString(value.type)}' to '${this.typeToRuntimeString(type)}'`,
@@ -185,24 +249,17 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
   }
 
   protected override typeKindName(type: TypeNode): string {
-    switch (type.kind) {
-      case "PrimitiveType":
-        return type.name;
-      case "ArrayType":
-        return "array";
-      case "VectorType":
-        return "vector";
-      case "MapType":
-        return "map";
-      case "PairType":
-        return "pair";
-      case "TupleType":
-        return "tuple";
-      case "PointerType":
-        return "pointer";
-      case "ReferenceType":
-        return "reference";
+    if (isPrimitiveType(type)) {
+      return type.name;
     }
+    if (isArrayType(type)) return "array";
+    if (isVectorType(type)) return "vector";
+    if (isMapType(type)) return "map";
+    if (isPairType(type)) return "pair";
+    if (isTupleType(type)) return "tuple";
+    if (isTemplateInstanceType(type)) return type.template.name;
+    if (isPointerType(type)) return "pointer";
+    return "reference";
   }
 
   protected serializeScope(scope: Scope): DebugValueView[] {
@@ -221,7 +278,7 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
     }
     return {
       name,
-      kind: value.kind,
+      kind: value.kind === "object" ? value.objectKind : value.kind,
       value: this.serializeValue(value),
     };
   }
@@ -229,21 +286,28 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
   protected serializeValue(value: RuntimeValue): string {
     switch (value.kind) {
       case "array":
-        return `<${value.type.kind === "VectorType" ? "vector" : "array"}#${value.ref}>`;
+        return `<array#${value.ref}>`;
+      case "object":
+        switch (value.objectKind) {
+          case "vector":
+            return `<vector#${value.ref}>`;
+          case "iterator":
+            return `<iterator:${typeToString(value.type)}@${value.ref}:${value.index}>`;
+          case "pair":
+            return `(${this.serializeValue(value.first)}, ${this.serializeValue(value.second)})`;
+          case "map":
+            return `{${value.entries
+              .map((entry) => `${this.serializeValue(entry.key)}: ${this.serializeValue(entry.value)}`)
+              .join(", ")}}`;
+          case "tuple":
+            return `(${value.values.map((element) => this.serializeValue(element)).join(", ")})`;
+        }
       case "pointer":
         return value.target === null ? "nullptr" : `<pointer:${typeToString(value.pointeeType)}>`;
       case "reference":
         return this.serializeValue(this.readLocation(value.target, this.currentLine));
       case "uninitialized":
         return `<uninitialized:${typeToString(value.expectedType)}>`;
-      case "pair":
-        return `(${this.serializeValue(value.first)}, ${this.serializeValue(value.second)})`;
-      case "map":
-        return `{${value.entries
-          .map((entry) => `${this.serializeValue(entry.key)}: ${this.serializeValue(entry.value)}`)
-          .join(", ")}}`;
-      case "tuple":
-        return `(${value.values.map((element) => this.serializeValue(element)).join(", ")})`;
       case "bool":
         return value.value ? "true" : "false";
       default:
@@ -300,44 +364,40 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
   }
 
   protected sameType(left: TypeNode, right: TypeNode): boolean {
-    if (left.kind !== right.kind) {
-      return false;
+    if (isPrimitiveType(left) || isPrimitiveType(right)) {
+      return isPrimitiveType(left) && isPrimitiveType(right) && left.name === right.name;
     }
-    switch (left.kind) {
-      case "PrimitiveType":
-        return right.kind === "PrimitiveType" && left.name === right.name;
-      case "ArrayType":
-        return right.kind === "ArrayType" && this.sameType(left.elementType, right.elementType);
-      case "VectorType":
-        return right.kind === "VectorType" && this.sameType(left.elementType, right.elementType);
-      case "MapType":
-        return (
-          right.kind === "MapType" &&
-          this.sameType(left.keyType, right.keyType) &&
-          this.sameType(left.valueType, right.valueType)
-        );
-      case "PointerType":
-        return right.kind === "PointerType" && this.sameType(left.pointeeType, right.pointeeType);
-      case "PairType":
-        return (
-          right.kind === "PairType" &&
-          this.sameType(left.firstType, right.firstType) &&
-          this.sameType(left.secondType, right.secondType)
-        );
-      case "TupleType":
-        return (
-          right.kind === "TupleType" &&
-          left.elementTypes.length === right.elementTypes.length &&
-          left.elementTypes.every((elementType, index) => {
-            const rightElementType = right.elementTypes[index];
-            return rightElementType !== undefined && this.sameType(elementType, rightElementType);
-          })
-        );
-      case "ReferenceType":
-        return (
-          right.kind === "ReferenceType" && this.sameType(left.referredType, right.referredType)
-        );
+  if (isArrayType(left) || isArrayType(right)) {
+      return (
+        isArrayType(left) &&
+        isArrayType(right) &&
+        this.sameType(left.elementType, right.elementType)
+      );
     }
+    if (isTemplateInstanceType(left) || isTemplateInstanceType(right)) {
+      return (
+        isTemplateInstanceType(left) &&
+        isTemplateInstanceType(right) &&
+        left.template.name === right.template.name &&
+        left.templateArgs.length === right.templateArgs.length &&
+        left.templateArgs.every((templateArg, index) => {
+          const rightTemplateArg = right.templateArgs[index];
+          return rightTemplateArg !== undefined && this.sameType(templateArg, rightTemplateArg);
+        })
+      );
+    }
+    if (isPointerType(left) || isPointerType(right)) {
+      return (
+        isPointerType(left) &&
+        isPointerType(right) &&
+        this.sameType(left.pointeeType, right.pointeeType)
+      );
+    }
+    return (
+      isReferenceType(left) &&
+      isReferenceType(right) &&
+      this.sameType(left.referredType, right.referredType)
+    );
   }
 
   protected typeToRuntimeString(type: TypeNode): string {

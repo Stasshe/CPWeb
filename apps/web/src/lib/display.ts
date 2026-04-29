@@ -7,7 +7,7 @@ export type PlaygroundArrayView = {
 
 export function getArrayView(
   value: string,
-  arraysByRef: Map<number, PlaygroundArrayView>
+  arraysByRef: Map<number, PlaygroundArrayView>,
 ): PlaygroundArrayView | null {
   const ref = getArrayRef(value);
   if (ref === null) {
@@ -32,7 +32,7 @@ export function formatVariableKind(kind: string, arrayView: PlaygroundArrayView 
 
 export function formatVariablePreview(
   value: string,
-  arraysByRef: Map<number, PlaygroundArrayView>
+  arraysByRef: Map<number, PlaygroundArrayView>,
 ): string {
   const arrayView = getArrayView(value, arraysByRef);
   if (arrayView === null) {
@@ -52,7 +52,7 @@ export function formatMetricsText(
   line: number,
   stepCount: number,
   pauseReason: string | null,
-  breakpointCount: number
+  breakpointCount: number,
 ): string {
   const parts = [`L${line}`, `${stepCount}steps`];
 

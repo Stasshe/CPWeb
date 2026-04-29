@@ -1,5 +1,12 @@
-import { useState } from "react";
-import type { ReactNode } from "react";
+import {
+  formatArrayLabel,
+  formatMetricsText,
+  formatVariableKind,
+  formatVariablePreview,
+  getArrayView,
+  type PlaygroundArrayView,
+} from "@web/lib/display";
+import { getScopeTitle } from "@web/lib/state";
 import {
   AlertCircle,
   ArrowDownToLine,
@@ -11,16 +18,9 @@ import {
   StepBack,
   StepForward,
 } from "lucide-react";
+import type { ReactNode } from "react";
+import { useState } from "react";
 import type { DebugState } from "@/types";
-import {
-  formatArrayLabel,
-  formatMetricsText,
-  formatVariableKind,
-  formatVariablePreview,
-  getArrayView,
-  type PlaygroundArrayView,
-} from "@web/lib/display";
-import { getScopeTitle } from "@web/lib/state";
 
 type VariableValueTreeProps = {
   arraysByRef: Map<number, PlaygroundArrayView>;
@@ -130,7 +130,11 @@ function VariableValueTree({
             : undefined
         }
       >
-        {hasChildren ? <ExpandIcon expanded={isExpanded} /> : <span className="w-[12px] shrink-0" />}
+        {hasChildren ? (
+          <ExpandIcon expanded={isExpanded} />
+        ) : (
+          <span className="w-[12px] shrink-0" />
+        )}
         <span className="shrink-0 text-[var(--text-dim)]">[{index}]</span>
         {arrayView ? (
           <span className="text-[var(--purple)]">{formatArrayLabel(arrayView)}</span>
@@ -284,7 +288,7 @@ export function DebugSidebar({
     execution.currentLine,
     execution.stepCount,
     execution.pauseReason,
-    breakpoints.length
+    breakpoints.length,
   );
   const continueLabel = execution.status === "paused" ? "Continue" : "Run to End";
   const inputDisplayParts = buildInputDisplayParts(input);
@@ -366,10 +370,7 @@ export function DebugSidebar({
 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-color:var(--border2)_transparent] [scrollbar-width:thin]">
         <div className="border-b border-[var(--border)]">
-          <SectionHeader
-            label="Input"
-            count={execution.input.tokens.length}
-          />
+          <SectionHeader label="Input" count={execution.input.tokens.length} />
           {execution.input.tokens.length === 0 ? (
             <EmptyState>No stdin tokens</EmptyState>
           ) : (
@@ -395,7 +396,9 @@ export function DebugSidebar({
                   className={`flex cursor-default items-center gap-2 px-3 py-1 pl-5 text-[12.6px] hover:bg-[var(--hl-line)] ${index === 0 ? "text-[var(--yellow)]" : ""}`}
                 >
                   <span className="flex-1 truncate">{frame.functionName}()</span>
-                  <span className="shrink-0 text-[10.8px] text-[var(--text-dim)]">:{frame.line}</span>
+                  <span className="shrink-0 text-[10.8px] text-[var(--text-dim)]">
+                    :{frame.line}
+                  </span>
                 </li>
               ))}
             </ul>

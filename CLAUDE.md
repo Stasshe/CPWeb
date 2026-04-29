@@ -5,8 +5,16 @@
 - `SPECIFICATION.md` だけを見て広く薄く実装しない。実装順序と必達条件は `IMPLEMENTATION_DIRECTIVES.md` を優先して従う
 - 新機能を入れるときは、まず `IMPLEMENTATION_DIRECTIVES.md` にあるゴールデンプログラムを確認する
 - ゴールデンプログラムに必要な機能は、parser / semantic / runtime / debugger / tests / docs を同一変更で揃える
-- 競プロ頻出の断片は、一般化が重くても `vector` / `pair` と同じく組み込み機能として先に実装してよい
+- ai-docsのドキュメントも、必要であろう時、事前に読んでおけ
+- 仕様以下の実装をするな。表面的な変更で済ますな。
+- ファイルが短いのは良い。ファイルは多くてもかまわないが、長すぎるファイルをつくるな。
 - 実装対象が広すぎる場合は、`SPECIFICATION.md` を増やす前に `IMPLEMENTATION_DIRECTIVES.md` の受け入れ条件を具体化する
+
+## テンプレート実装
+
+- テンプレート関連は parser の既知名分岐を増やさず、一般の template-id / template-type として受理してから `stdlib/` と template instantiation で解決する
+- 標準ライブラリ風機能は evaluator / validator 直書きではなく、`stdlib/metadata.ts` と stdlib handler に寄せる
+- `pair.first` のようなメンバー、`map.size()` のようなメソッド、`vector.begin()/end()` が返す iterator を C++ 風の形で表現し、legacy な AST 形特例を増やさない
 
 ## ディレクトリ構造
 
@@ -32,13 +40,47 @@ src/
 ├── interpreter/
 │   ├── index.ts
 │   ├── evaluator.ts
+│   ├── builtin-eval.ts        ← stdlib dispatch への薄い橋渡し
 │   └── runtime/
 │       ├── index.ts
 │       ├── core.ts
 │       ├── type-support.ts
 │       └── support.ts
 ├── semantic/
-│   └── validator.ts
+│   ├── validator.ts
+│   ├── builtin-checker.ts
+│   ├── template-instantiator.ts  ← 型引数推論・単相化・substituteExpr
+│   ├── type-compat.ts
+│   └── type-utils.ts
+├── stdlib/
+│   ├── metadata.ts
+│   ├── template-exprs.ts
+│   ├── template-types.ts
+│   ├── check-registry.ts
+│   ├── eval-registry.ts
+│   ├── check-context.ts
+│   ├── eval-context.ts
+│   ├── vector-methods.ts
+│   ├── map-methods.ts
+│   ├── pair-members.ts
+│   ├── check/
+│   │   ├── index.ts
+│   │   ├── factories.ts
+│   │   ├── get.ts
+│   │   ├── methods.ts
+│   │   ├── range-algorithms.ts
+│   │   ├── value-functions.ts
+│   │   └── vector.ts
+│   ├── eval/
+│   │   ├── index.ts
+│   │   ├── factories.ts
+│   │   ├── get.ts
+│   │   ├── pair-map.ts
+│   │   ├── range-algorithms.ts
+│   │   ├── value-functions.ts
+│   │   └── vector.ts
+│   └── builtins/
+│       └── compare.ts
 └── debugger/
     └── session.ts
 ```

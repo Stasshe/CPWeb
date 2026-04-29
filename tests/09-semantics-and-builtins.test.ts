@@ -247,6 +247,21 @@ int main() {
     expect(result.output.stdout).toBe("10 20\n");
   });
 
+  it("supports pair member assignment as lvalue", () => {
+    const source = `
+int main() {
+  pair<int, int> p = make_pair(1, 2);
+  p.first = 7;
+  p.second = p.first + 5;
+  cout << p.first << " " << p.second << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("7 12\n");
+  });
+
   it("supports vector of pairs", () => {
     const source = `
 int main() {
@@ -305,5 +320,54 @@ int main() {
       throw new Error("expected compile error");
     }
     expect(result.errors[0]?.message).toMatch(/make_tuple requires at least 1 argument/);
+  });
+
+  it("supports map.size()", () => {
+    const source = `
+#include<iostream>
+using namespace std;
+int main() {
+  map<int, int> m;
+  m[1] = 10;
+  m[2] = 20;
+  cout << m.size() << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("2\n");
+  });
+
+  it("rejects unknown map method", () => {
+    const source = `
+int main() {
+  map<int, int> m;
+  m.push_back(1);
+  return 0;
+}
+`;
+    const result = compile(source);
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("expected compile error");
+    }
+    expect(result.errors[0]?.message).toMatch(/unknown map method/);
+  });
+
+  it("rejects unknown vector method", () => {
+    const source = `
+int main() {
+  vector<int> v;
+  v.front();
+  return 0;
+}
+`;
+    const result = compile(source);
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("expected compile error");
+    }
+    expect(result.errors[0]?.message).toMatch(/unknown vector method/);
   });
 });

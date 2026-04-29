@@ -19,7 +19,7 @@
 |---|---|
 | 動的メモリ（`malloc`, `new`, `free`, `delete`） | |
 | 構造体・クラス（`struct`, `class`） | |
-| テンプレート（`template<>`） | ユーザー定義テンプレート・汎用テンプレート機構は非対応。`vector<T>`、`map<K,V>`、`pair<T,U>`、`tuple<T...>`、`make_pair`、`make_tuple`、`get<I>`、`greater<int>()` / `greater<>()` など一部の標準ライブラリ記法のみ組み込みとして特別対応 |
+| テンプレート（`template<>`） | 関数テンプレート宣言、実引数からの型推論による呼び出し、明示テンプレート実引数呼び出し（`f<int>(x)`）を限定対応する。`vector<T>`、`map<K,V>`、`pair<T,U>`、`tuple<T...>`、`make_pair`、`make_tuple`、`get<I>`、`greater<int>()` / `greater<>()` などの標準ライブラリ風記法をサポートする。クラステンプレート・変数テンプレート・部分特殊化・明示特殊化・完全なオーバーロード解決は非対応 |
 | 関数ポインタ | |
 | 名前空間（`namespace`） | `using namespace std;` のみ特別扱いで許可 |
 | プリプロセッサ | `#include <bits/stdc++.h>`、`#include <iostream>`、`#include <vector>`、`#include <map>`、`#define` に対応 |
@@ -112,6 +112,8 @@ vector<vector<int>> g;    // ネスト vector も可
 | `v.back()` | 末尾要素の参照 |
 | `v.empty()` | 空かどうか（`bool`） |
 | `v.clear()` | 全要素削除 |
+| `v.begin()` | `v` 全体を指す range 始端。現状は `sort` / `reverse` / `fill` の完全範囲指定専用 |
+| `v.end()` | `v` 全体を指す range 終端。現状は `sort` / `reverse` / `fill` の完全範囲指定専用 |
 | `v[i]` | 添字アクセス（範囲外は実行時エラー） |
 | `v.resize(n)` | リサイズ（縮小時は切り捨て、拡大時は型ごとの既定値で埋める） |
 
@@ -149,7 +151,7 @@ cout << p.first << " " << p.second << "\n";
 - `pair<T, U>` を型としてサポートする
 - 生成は `make_pair(a, b)` をサポートする
 - メンバーアクセスとして `p.first` と `p.second` をサポートする
-- これは一般テンプレートの実装ではなく、`pair` を組み込み ADT として特別扱いする
+- `p.first` / `p.second` は member access として扱い、lvalue 代入にも使える
 - 構造化束縛（`auto [x, y]`）は非対応
 
 ### 3.7 `tuple` / 多重戻り値
@@ -170,8 +172,25 @@ int main() {
 - 要素アクセスは `get<I>(t)` をサポートする。`I` は 0 始まりの非負整数リテラル
 - `get<I>(t)` は lvalue として使える。代入や `swap` の対象にもできる
 - 関数の戻り値として `tuple<...>` を許可し、多重戻り値は tuple を返す形で表現する
-- これは一般テンプレートの実装ではなく、`tuple` と `get<I>` を組み込み ADT / 組み込み操作として特別扱いする
+- `get<I>(t)` は template-call として扱い、stdlib registry 経由で解決する
 - 構造化束縛（`auto [x, y]`）は非対応
+
+### 3.8 関数テンプレート（限定対応）
+
+```cpp
+template<typename T>
+void chmin(T& a, T b) {
+    if (b < a) a = b;
+}
+```
+
+- トップレベルの関数テンプレート宣言をサポートする
+- 型パラメータ宣言は `template<typename T, ...>` のみ対応する。`class` は未対応
+- 呼び出しは `chmin(x, y)` のような型推論付き呼び出しと `chmin<int>(x, y)` のような明示テンプレート実引数呼び出しに対応する
+- 同一テンプレート引数は厳密に一致する必要があり、`same('a', 1)` のような競合推論はコンパイルエラー
+- 単相化（monomorphization）は呼び出しごとに実施する。型引数置換（`substituteExpr`）は式・文の全ノードに再帰適用する（変数宣言初期化子、配列初期化子、if/for/while/range-for の条件・更新・ソース式を含む）
+- サポート対象は関数テンプレートのみ
+- 未対応: クラステンプレート、部分特殊化、明示特殊化、オーバーロード解決
 
 ---
 
@@ -340,11 +359,13 @@ for (;;) { ... }   // 無限ループ
 for (auto x : v) { ... }
 for (auto& x : v) { ... }
 for (int x : a) { ... }
+for (auto& p : m) { ... }  // map: p は pair<K, V>
 ```
 
-- 走査対象は固定長配列・`vector`・`string`
+- 走査対象は固定長配列・`vector`・`map`・`string`
 - `auto&` や `T&` を使うと、ループ変数への代入が元要素に反映される
-- `string` を走査する場合、要素は長さ 1 の `string`
+- `map` を走査する場合、要素は `pair<K, V>`
+- `string` を走査する場合、要素は `char`
 
 ### 6.4 `while`
 
@@ -480,11 +501,12 @@ cerr << "debug: " << x << "\n";
 - `abs` / `max` / `min` は現在の実装では整数専用
 - `swap` の引数は lvalue（変数または添字アクセス）でなければならない
 - `make_pair` はちょうど 2 引数、`make_tuple` は 1 引数以上を要求する
-- `sort` / `reverse` / `fill` は `vector` に対する完全範囲 `v.begin(), v.end()` のみ対応
-- `sort` の comparator は `greater<int>()` 形式のみ対応
-- `greater<int>()` は一般テンプレートではなく、降順ソート指定のための組み込み特例構文
-- `get<I>(x)` も一般関数テンプレートではなく、tuple 要素アクセスのための組み込み特例構文
-- `sort` 等の `begin()` / `end()` はイテレータの模倣として構文解析レベルで特別扱いする
+- `sort` / `reverse` / `fill` は `vector` に対する完全範囲 `v.begin(), v.end()` のみ対応し、`begin()` / `end()` が返す内部 iterator を通じて range を扱う
+- `sort` の comparator は `greater<int>()` と `greater<>()` に対応する
+- `greater<int>()` / `greater<>()` は stdlib template-call として受理し、降順 comparator として扱う
+- `get<I>(x)` は stdlib template-call として受理し、tuple 要素アクセスとして扱う
+- `vector.begin()` / `vector.end()` は method metadata で扱い、返り値は内部 iterator
+- `map.size()` は stdlib method registry で実装し、他の `map` メソッドは未対応
 - 固定長配列への `sort`（`sort(a, a + n)`）は将来対応
 
 ---
@@ -575,23 +597,44 @@ type RuntimeErrorInfo = {
 ### 11.1 実行時の値表現
 
 ```typescript
+type RuntimeObjectValue =
+  | { kind: "object"; objectKind: "vector"; type: VectorTypeNode; ref: number }
+  | { kind: "object"; objectKind: "map"; type: MapTypeNode; entries: { key: Value; value: Value }[] }
+  | { kind: "object"; objectKind: "pair"; type: PairTypeNode; first: Value; second: Value }
+  | { kind: "object"; objectKind: "tuple"; type: TupleTypeNode; values: Value[] }
+  | { kind: "object"; objectKind: "iterator"; type: IteratorTypeNode; ref: number; index: number }
+
 type Value =
   | { kind: "int"; value: bigint }
   | { kind: "double"; value: number }
   | { kind: "bool"; value: boolean }
+  | { kind: "char"; value: string }
   | { kind: "string"; value: string }
-  | { kind: "pair"; first: Value; second: Value }
-  | { kind: "tuple"; values: Value[] }
-  | { kind: "array"; ref: ArrayId }
+  | RuntimeObjectValue
+  | { kind: "array"; ref: number; type: TypeNode }
   | { kind: "pointer"; pointeeType: TypeNode; target: RuntimeLocation | null }
   | { kind: "reference"; type: ReferenceTypeNode; target: RuntimeLocation }
   | { kind: "void" }
   | { kind: "uninitialized"; expectedType: TypeNode }
 ```
 
-- `pair` / `tuple` は実行時値として直接保持する
-- pointer / reference は `RuntimeLocation` を通じて、変数・配列要素・tuple 要素・文字列要素を指せる
+- `vector`、`map`、`pair`、`tuple`、`__iterator` はすべて `kind: "object"` に統一し、`objectKind` で種別を識別する
+- `vector` の実体は内部 `ArrayStore` に `ref` 経由でアクセスする（固定長配列と同じストレージを共用）
+- `map` の entries は inline に保持する（対応する `ArrayStore` は持たない）
+- `pair` / `tuple` の要素値は inline に保持する
+- `__iterator` は `vector` の `begin()/end()` が返す内部型。`sort`/`reverse`/`fill` 専用で、ユーザー定義 iterator は非対応
+- pointer / reference は `RuntimeLocation` を通じて、変数・配列要素・pair メンバー・tuple 要素・文字列要素を指せる
 - `uninitialized` はローカル未初期化変数の表現であり、読み取り時に実行時エラーになる
+
+```typescript
+type RuntimeLocation =
+  | { kind: "binding"; scope: Map<string, Value>; name: string; type: TypeNode }
+  | { kind: "array"; ref: number; index: number; type: TypeNode }
+  | { kind: "object"; parent: RuntimeLocation; objectKind: "map"; entryIndex: number; type: TypeNode; access: "entry" | "value" }
+  | { kind: "object"; parent: RuntimeLocation; objectKind: "pair"; member: "first" | "second"; type: TypeNode }
+  | { kind: "object"; parent: RuntimeLocation; objectKind: "tuple"; index: number; type: TypeNode }
+  | { kind: "string"; parent: RuntimeLocation; index: number }
+```
 
 ### 11.2 スコープとストレージ
 
@@ -611,7 +654,7 @@ type ArrayStore = {
 
 - 実行中のブロックスコープは `scopeStack: Scope[]` で管理する
 - 関数呼び出し履歴は `frameStack: Frame[]` で管理する
-- 固定長配列と `vector` の実体は `Map<ArrayId, ArrayStore>` に保持する
+- 固定長配列と `vector` の実体は `Map<ArrayId, ArrayStore>` に保持する（`vector` は `objectKind: "vector"` の Value が `ref` で参照）
 - 多次元固定長配列は内部的には平坦化した 1 次元ストレージとして管理する
 - 実行時エラー発生時は `frameStack` をもとに stack trace を組み立て、最内周フレームから順に露出する
 
@@ -774,13 +817,16 @@ primary       = int_lit
               | string_lit
               | ident
               | tuple_get
+              | template_call
               | "endl"
               | "(" expr ")" ;
 
-lvalue        = ident | ident "[" expr "]" | "*" unary | tuple_get ;
+lvalue        = ident | ident "[" expr "]" | "*" unary | tuple_get | member_access ;
 arg_list      = [ expr { "," expr } ] ;
 expr_list     = expr { "," expr } ;
-method_call   = ident "(" arg_list ")" | ident ;
+method_call   = ident "(" arg_list ")" ;
+member_access = ident "." ident ;
+template_call = ident "<" (type | int_lit) { "," (type | int_lit) } ">" "(" arg_list ")" ;
 tuple_get     = "get" "<" int_lit ">" "(" expr ")" ;
 
 (* リテラル *)
@@ -799,17 +845,16 @@ ident         = letter { letter | digit | "_" } ;
 type ProgramNode = {
   kind: "Program"
   globals: GlobalDeclNode[]
-  functions: FunctionDeclNode[]
+  functions: (FunctionDeclNode | TemplateFunctionDeclNode)[]
 }
 
-type GlobalDeclNode = VarDeclNode | ArrayDeclNode | VectorDeclNode
+type GlobalDeclNode = VarDeclNode | ArrayDeclNode
 
 type StatementNode =
   | BlockStmtNode
   | DeclGroupStmtNode
   | VarDeclNode
   | ArrayDeclNode
-  | VectorDeclNode
   | RangeForStmtNode
   | IfStmtNode
   | ForStmtNode
@@ -830,7 +875,9 @@ type ExprNode =
   | AddressOfExprNode
   | DerefExprNode
   | CallExprNode
-  | TupleGetExprNode
+  | TemplateIdExprNode
+  | TemplateCallExprNode
+  | MemberAccessExprNode
   | MethodCallExprNode
   | IndexExprNode
   | IdentifierExprNode
@@ -840,7 +887,31 @@ type AssignTargetNode =
   | IdentifierExprNode
   | IndexExprNode
   | DerefExprNode
-  | TupleGetExprNode
+  | MemberAccessExprNode
+  | TemplateCallExprNode
+
+type TemplateFunctionDeclNode = {
+  kind: "TemplateFunctionDecl"
+  typeParams: string[]
+  returnType: TypeNode
+  name: string
+  params: ParamNode[]
+  body: BlockStmtNode
+}
+
+type TemplateIdExprNode = {
+  kind: "TemplateIdExpr"
+  template: string
+  templateArgs: TemplateArgNode[]
+}
+
+type TemplateArgNode = TypeTemplateArgNode | IntTemplateArgNode
+
+type TemplateCallExprNode = {
+  kind: "TemplateCallExpr"
+  callee: TemplateIdExprNode
+  args: ExprNode[]
+}
 
 type LiteralExprNode = {
   kind: "Literal"
@@ -858,6 +929,7 @@ type LiteralExprNode = {
 - 固定長配列、`vector`
 - pointer / reference、基本的なポインタ演算
 - `pair<T, U>`、`tuple<T...>`、`make_pair`、`make_tuple`、`get<I>`
+- 限定的な関数テンプレート（`template<typename T> ...` + 型推論 / 明示テンプレート実引数呼び出し）
 - `if` / `for` / range-based `for` / `while` / `break` / `continue`
 - 関数定義・再帰・グローバル変数
 - `cin` / `cout` / `cerr` / `endl`
@@ -866,11 +938,13 @@ type LiteralExprNode = {
 
 ### 15.2 現在未対応または限定対応の項目
 
-- ユーザー定義テンプレート、汎用テンプレート機構
+- クラステンプレート、変数テンプレート
+- 部分特殊化、明示特殊化、オーバーロード解決
 - `struct` / `class`
 - 一般の `auto` 変数宣言、構造化束縛
 - 参照戻り値
 - 固定長配列への `sort(a, a + n)`
+- internal iterator は `__iterator<...>` として内部表現されるが、ユーザー定義 iterator は未対応
 - 条件付きプリプロセッサ（`#if`, `#ifdef`, `#ifndef`, `#else`, `#endif`）
 - 条件付きブレークポイント
 - 巻き戻し実行
@@ -882,7 +956,7 @@ type LiteralExprNode = {
 ## 16. 設計上の原則
 
 1. **競プロ断片の再現を優先する**：C++ 全体ではなく、競技プログラミングで頻出の表面記法を安全に再現する
-2. **テンプレートは実装しないが、一部の標準ライブラリ記法は組み込みで再現する**：`vector<T>`、`pair<T,U>`、`tuple<T...>`、`get<I>`、`greater<int>()` などはこの方針で扱う
+2. **テンプレートは限定実装だが、AST と stdlib dispatch は C++ 風に揃える**：関数テンプレートは型推論付き呼び出しと明示テンプレート実引数呼び出しをサポートし、`vector<T>`、`pair<T,U>`、`tuple<T...>`、`get<I>`、`greater<int>()` などは一般の template-id / template-call として扱う
 3. **エラーは結果として返す**：外部 API では `status: "error"` とエラー情報で伝達する
 4. **状態は可視化しやすく保つ**：デバッグ UI 連携を前提に、配列実体・スコープ・現在位置を明示的に保持する
 5. **C++ と完全一致しない点は明文化する**：`vector` の参照セマンティクス、`endl` の no-op flush、再開時の再実行などは仕様として記述する
