@@ -198,6 +198,8 @@ function substituteExpr(expr: ExprNode, map: TypeArgMap): ExprNode {
         target: substituteExpr(expr.target, map),
         index: substituteExpr(expr.index, map),
       };
+    case "CastExpr":
+      return { ...expr, operand: substituteExpr(expr.operand, map) };
   }
 }
 

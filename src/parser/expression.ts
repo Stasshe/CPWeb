@@ -3,6 +3,7 @@ import type {
   AddressOfExprNode,
   AssignExprNode,
   BinaryExprNode,
+  CastExprNode,
   ConditionalExprNode,
   DerefExprNode,
   ExprNode,
@@ -193,7 +194,45 @@ export abstract class ExpressionParser extends BaseParser {
       return node;
     }
 
+    if (this.looksLikeCStyleCast()) {
+      const startTok = this.peek();
+      this.advance(); // consume `(`
+      const castType = this.parsePrimitiveType();
+      if (castType === null) {
+        return this.parsePostfix();
+      }
+      this.consumeSymbol(")", "expected ')' after type in cast");
+      const operand = this.parseUnary();
+      const node: CastExprNode = {
+        kind: "CastExpr",
+        castType,
+        operand,
+        ...this.rangeFromNode(startTok, operand),
+      };
+      return node;
+    }
+
     return this.parsePostfix();
+  }
+
+  private looksLikeCStyleCast(): boolean {
+    const open = this.tokens[this.index];
+    if (open?.kind !== "symbol" || open.text !== "(") return false;
+    let cursor = this.index + 1;
+    const PRIM_TYPES = new Set(["int", "double", "bool", "char", "string", "void"]);
+    const token = this.tokens[cursor];
+    if (!token) return false;
+    if (token.kind === "keyword" && token.text === "long") {
+      const next = this.tokens[cursor + 1];
+      if (next?.kind !== "keyword" || next.text !== "long") return false;
+      cursor += 2;
+    } else if (token.kind === "keyword" && PRIM_TYPES.has(token.text)) {
+      cursor++;
+    } else {
+      return false;
+    }
+    const close = this.tokens[cursor];
+    return close?.kind === "symbol" && close.text === ")";
   }
 
   private parsePostfix(): ExprNode {
@@ -320,6 +359,29 @@ export abstract class ExpressionParser extends BaseParser {
     const templateId = this.parseTemplateIdExpr();
     if (templateId !== null) {
       return templateId;
+    }
+
+    // Functional cast: type(expr) for single-keyword numeric types
+    const FUNCTIONAL_CAST_TYPES = new Set(["int", "double", "bool", "char"]);
+    const peekTok = this.peek();
+    if (peekTok.kind === "keyword" && FUNCTIONAL_CAST_TYPES.has(peekTok.text)) {
+      const next = this.tokens[this.index + 1];
+      if (next?.kind === "symbol" && next.text === "(") {
+        const startTok = peekTok;
+        const castType = this.parsePrimitiveType();
+        if (castType !== null) {
+          this.consumeSymbol("(", "expected '('");
+          const operand = this.parseExpression();
+          this.consumeSymbol(")", "expected ')' after cast operand");
+          const node: CastExprNode = {
+            kind: "CastExpr",
+            castType,
+            operand,
+            ...this.rangeToPrevious(startTok),
+          };
+          return node;
+        }
+      }
     }
 
     if (this.match("number")) {

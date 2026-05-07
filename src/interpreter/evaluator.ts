@@ -182,6 +182,41 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         this.writeLocation(targetLocation, numericUpdated, expr.line);
         return expr.isPostfix ? numericCurrent : numericUpdated;
       }
+      case "CastExpr": {
+        const raw = this.ensureInitialized(this.evaluateExpr(expr.operand), expr.line, "operand");
+        const target = expr.castType.name;
+        if (target === "bool") {
+          if (raw.kind === "int") return { kind: "bool", value: raw.value !== 0n };
+          if (raw.kind === "double") return { kind: "bool", value: raw.value !== 0 };
+          if (raw.kind === "char") return { kind: "bool", value: raw.value !== "\0" };
+          if (raw.kind === "bool") return raw;
+          return this.fail(`cannot cast '${raw.kind}' to 'bool'`, expr.line);
+        }
+        if (target === "int" || target === "long long") {
+          if (raw.kind === "bool") return { kind: "int", value: raw.value ? 1n : 0n };
+          if (raw.kind === "double") {
+            if (!Number.isFinite(raw.value)) {
+              return this.fail("cannot cast non-finite 'double' to 'int'", expr.line);
+            }
+            return { kind: "int", value: BigInt(Math.trunc(raw.value)) };
+          }
+          return this.coerceRuntimeValue("int", raw, expr.line);
+        }
+        if (target === "double") {
+          if (raw.kind === "bool") return { kind: "double", value: raw.value ? 1.0 : 0.0 };
+          return this.coerceRuntimeValue("double", raw, expr.line);
+        }
+        if (target === "char") {
+          if (raw.kind === "double") {
+            if (!Number.isFinite(raw.value)) {
+              return this.fail("cannot cast non-finite 'double' to 'char'", expr.line);
+            }
+            return this.intToChar(BigInt(Math.trunc(raw.value)), expr.line);
+          }
+          return this.coerceRuntimeValue("char", raw, expr.line);
+        }
+        return this.fail(`unsupported cast target '${target}'`, expr.line);
+      }
       case "BinaryExpr":
         return this.evaluateBinary(expr);
       case "AssignExpr": {

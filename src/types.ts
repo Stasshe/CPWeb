@@ -229,6 +229,12 @@ export type CinStmtNode = NodeBase & {
   targets: AssignTargetNode[];
 };
 
+export type CastExprNode = NodeBase & {
+  kind: "CastExpr";
+  castType: PrimitiveTypeNode;
+  operand: ExprNode;
+};
+
 export type ExprNode =
   | AssignExprNode
   | ConditionalExprNode
@@ -243,7 +249,8 @@ export type ExprNode =
   | MethodCallExprNode
   | IndexExprNode
   | IdentifierExprNode
-  | LiteralExprNode;
+  | LiteralExprNode
+  | CastExprNode;
 
 export type AssignTargetNode =
   | IdentifierExprNode

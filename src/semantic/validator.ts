@@ -575,6 +575,27 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
         validateExpr,
         inferExprType,
       );
+    case "CastExpr": {
+      const operandType = validateExpr(expr.operand, context);
+      if (operandType !== null && !isNumericType(operandType) && !isBoolType(operandType)) {
+        pushError(
+          context,
+          expr.line,
+          expr.col,
+          `cannot cast type '${typeToString(operandType)}'`,
+        );
+      }
+      const target = expr.castType;
+      if (target.name === "void" || target.name === "string") {
+        pushError(
+          context,
+          expr.line,
+          expr.col,
+          `invalid cast target type '${target.name}'`,
+        );
+      }
+      return expr.castType;
+    }
   }
 }
 

@@ -203,6 +203,12 @@ function sameExpr(left: ExprNode, right: ExprNode): boolean {
         sameExpr(left.target, right.target) &&
         sameExpr(left.value, right.value)
       );
+    case "CastExpr":
+      return (
+        right.kind === "CastExpr" &&
+        left.castType.name === right.castType.name &&
+        sameExpr(left.operand, right.operand)
+      );
   }
 }
 

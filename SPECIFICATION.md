@@ -23,7 +23,7 @@
 | 関数ポインタ | |
 | 名前空間（`namespace`） | `using namespace std;` のみ特別扱いで許可 |
 | プリプロセッサ | `#include <bits/stdc++.h>`、`#include <iostream>`、`#include <vector>`、`#include <map>`、`#define` に対応 |
-| C / C++ キャスト構文（`(int)x`, `static_cast<>` 等） | |
+| C / C++ キャスト構文（`static_cast<>` 等） | C スタイルキャスト `(T)x` および関数形式キャスト `T(x)` は数値型（`int`・`long long`・`double`・`char`・`bool`）間で対応。`static_cast` などテンプレート形式は非対応 |
 | 参照戻り値 | 参照変数・参照引数・range-for 束縛のみ対応 |
 
 ---
