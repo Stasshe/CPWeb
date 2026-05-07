@@ -80,7 +80,21 @@ export function checkSwap(args: ExprNode[], line: number, col: number, ctx: Chec
   return { kind: "PrimitiveType", name: "void" };
 }
 
+export function checkSetprecision(
+  args: ExprNode[],
+  line: number,
+  col: number,
+  ctx: CheckCtx,
+): TypeNode {
+  if (args.length !== 1) {
+    ctx.pushError(line, col, "setprecision requires 1 argument");
+  }
+  ctx.validateExpr(args[0] ?? null, "int");
+  return { kind: "PrimitiveType", name: "void" };
+}
+
 registerFreeCall("abs", checkAbs);
 registerFreeCall("max", checkMax);
 registerFreeCall("min", checkMin);
+registerFreeCall("setprecision", checkSetprecision);
 registerFreeCall("swap", checkSwap);

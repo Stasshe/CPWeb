@@ -1,6 +1,6 @@
 import { BreakSignal, ContinueSignal, ReturnSignal, RuntimeTrap } from "@/runtime/errors";
 import type { RuntimeValue } from "@/runtime/value";
-import { stringifyValue, uninitializedForType } from "@/runtime/value";
+import { type OutputFormat, stringifyValue, uninitializedForType } from "@/runtime/value";
 import { mapKeyType, mapValueType, vectorElementType } from "@/stdlib/template-types";
 import type {
   DebugInfo,
@@ -292,22 +292,30 @@ class Interpreter extends InterpreterEvaluator {
       case "ExprStmt":
         this.evaluateExpr(stmt.expression);
         return;
-      case "CoutStmt":
+      case "CoutStmt": {
+        const fmt: OutputFormat = { fixed: this.coutFixed, precision: this.coutPrecision };
         for (const valueExpr of stmt.values) {
+          if (this.applyIomanipulator(valueExpr, fmt)) continue;
           const value = this.evaluateExpr(valueExpr);
           this.output.stdout += stringifyValue(
             this.ensureInitialized(value, valueExpr.line, "value"),
+            fmt,
           );
         }
         return;
-      case "CerrStmt":
+      }
+      case "CerrStmt": {
+        const fmt: OutputFormat = { fixed: this.coutFixed, precision: this.coutPrecision };
         for (const valueExpr of stmt.values) {
+          if (this.applyIomanipulator(valueExpr, fmt)) continue;
           const value = this.evaluateExpr(valueExpr);
           this.output.stderr += stringifyValue(
             this.ensureInitialized(value, valueExpr.line, "value"),
+            fmt,
           );
         }
         return;
+      }
       case "CinStmt":
         for (const target of stmt.targets) {
           const token = this.inputTokens[this.inputIndex];
@@ -320,6 +328,24 @@ class Interpreter extends InterpreterEvaluator {
         }
         return;
     }
+  }
+
+  private applyIomanipulator(expr: ExprNode, fmt: OutputFormat): boolean {
+    if (expr.kind === "Identifier" && expr.name === "fixed") {
+      this.coutFixed = true;
+      fmt.fixed = true;
+      return true;
+    }
+    if (expr.kind === "CallExpr" && expr.callee === "setprecision" && expr.args.length === 1) {
+      // biome-ignore lint/style/noNonNullAssertion: length === 1 checked above
+      const arg = this.evaluateExpr(expr.args[0]!);
+      if (arg.kind === "int") {
+        this.coutPrecision = Number(arg.value);
+        fmt.precision = this.coutPrecision;
+      }
+      return true;
+    }
+    return false;
   }
 
   protected buildDebugInfo() {

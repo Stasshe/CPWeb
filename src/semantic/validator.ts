@@ -421,6 +421,7 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
       return { kind: "PrimitiveType", name: "string" };
     case "Identifier":
       if (expr.name === "endl") return { kind: "PrimitiveType", name: "string" };
+      if (expr.name === "fixed") return { kind: "PrimitiveType", name: "void" };
       return unwrapReference(resolveSymbol(expr.name, expr.line, expr.col, context));
     case "IndexExpr": {
       const targetType = inferExprType(expr.target, context);
@@ -578,21 +579,11 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
     case "CastExpr": {
       const operandType = validateExpr(expr.operand, context);
       if (operandType !== null && !isNumericType(operandType) && !isBoolType(operandType)) {
-        pushError(
-          context,
-          expr.line,
-          expr.col,
-          `cannot cast type '${typeToString(operandType)}'`,
-        );
+        pushError(context, expr.line, expr.col, `cannot cast type '${typeToString(operandType)}'`);
       }
       const target = expr.castType;
       if (target.name === "void" || target.name === "string") {
-        pushError(
-          context,
-          expr.line,
-          expr.col,
-          `invalid cast target type '${target.name}'`,
-        );
+        pushError(context, expr.line, expr.col, `invalid cast target type '${target.name}'`);
       }
       return expr.castType;
     }
@@ -735,11 +726,7 @@ function validateTypeNode(
         pushError(context, line, col, "this feature is not supported in this interpreter");
       } else if (spec === null) {
         pushError(context, line, col, `'${type.template.name}' is not a supported template type`);
-      } else if (
-        spec !== null &&
-        spec.arity >= 0 &&
-        type.templateArgs.length !== spec.arity
-      ) {
+      } else if (spec !== null && spec.arity >= 0 && type.templateArgs.length !== spec.arity) {
         pushError(
           context,
           line,

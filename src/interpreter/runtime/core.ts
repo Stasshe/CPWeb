@@ -81,6 +81,10 @@ export abstract class InterpreterRuntimeCore {
 
   protected stepCount = 0;
 
+  protected coutFixed = false;
+
+  protected coutPrecision: number | null = null;
+
   constructor(program: ProgramNode, input: string, options: InterpreterOptions) {
     this.program = program;
     this.options = options;
@@ -415,7 +419,10 @@ export abstract class InterpreterRuntimeCore {
     return { kind: "array", ref, type };
   }
 
-  protected allocateVector(type: import("@/types").VectorTypeNode, values: RuntimeValue[]): RuntimeValue {
+  protected allocateVector(
+    type: import("@/types").VectorTypeNode,
+    values: RuntimeValue[],
+  ): RuntimeValue {
     const ref = this.nextArrayRef;
     this.nextArrayRef += 1;
     this.arrays.set(ref, { type, values });

@@ -56,7 +56,11 @@ export type RuntimeValue =
   | { kind: "char"; value: string }
   | { kind: "string"; value: string }
   | RuntimeObjectValue
-  | { kind: "array"; ref: number; type: Exclude<TypeNode, PrimitiveTypeNode | TemplateInstanceTypeNode> }
+  | {
+      kind: "array";
+      ref: number;
+      type: Exclude<TypeNode, PrimitiveTypeNode | TemplateInstanceTypeNode>;
+    }
   | { kind: "pointer"; pointeeType: TypeNode; target: RuntimeLocation | null }
   | { kind: "reference"; type: ReferenceTypeNode; target: RuntimeLocation }
   | { kind: "void" }
@@ -84,16 +88,26 @@ export function uninitializedForType(type: PrimitiveTypeNode): RuntimeValue {
   return { kind: "uninitialized", expectedType: type };
 }
 
-export function stringifyValue(value: RuntimeValue): string {
+export type OutputFormat = {
+  fixed: boolean;
+  precision: number | null;
+};
+
+export function formatDouble(value: number, format?: OutputFormat): string {
+  if (format !== undefined && format.precision !== null) {
+    return format.fixed ? value.toFixed(format.precision) : value.toPrecision(format.precision);
+  }
+  return Number.isInteger(value) ? value.toFixed(1).replace(/\.0$/, "") : value.toString();
+}
+
+export function stringifyValue(value: RuntimeValue, format?: OutputFormat): string {
   switch (value.kind) {
     case "int":
       return value.value.toString();
     case "bool":
       return value.value ? "1" : "0";
     case "double":
-      return Number.isInteger(value.value)
-        ? value.value.toFixed(1).replace(/\.0$/, "")
-        : value.value.toString();
+      return formatDouble(value.value, format);
     case "char":
       return value.value;
     case "string":
@@ -101,13 +115,16 @@ export function stringifyValue(value: RuntimeValue): string {
     case "object":
       switch (value.objectKind) {
         case "pair":
-          return `(${stringifyValue(value.first)}, ${stringifyValue(value.second)})`;
+          return `(${stringifyValue(value.first, format)}, ${stringifyValue(value.second, format)})`;
         case "map":
           return `{${value.entries
-            .map((entry) => `${stringifyValue(entry.key)}: ${stringifyValue(entry.value)}`)
+            .map(
+              (entry) =>
+                `${stringifyValue(entry.key, format)}: ${stringifyValue(entry.value, format)}`,
+            )
             .join(", ")}}`;
         case "tuple":
-          return `(${value.values.map((element) => stringifyValue(element)).join(", ")})`;
+          return `(${value.values.map((element) => stringifyValue(element, format)).join(", ")})`;
         case "vector":
           return "<vector>";
         case "iterator":

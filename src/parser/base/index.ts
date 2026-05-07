@@ -30,12 +30,12 @@ export abstract class BaseParser extends BaseParserSupport {
       const first = declarations[0] as StatementNode;
       const group: DeclGroupStmtNode = {
         kind: "DeclGroupStmt",
-          declarations,
-          ...this.rangeFromNode(
-            first,
-            declarations[declarations.length - 1] as VarDeclNode | ArrayDeclNode,
-          ),
-        };
+        declarations,
+        ...this.rangeFromNode(
+          first,
+          declarations[declarations.length - 1] as VarDeclNode | ArrayDeclNode,
+        ),
+      };
       return group;
     }
 

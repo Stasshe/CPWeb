@@ -59,9 +59,7 @@ export abstract class BaseParserSupport extends BaseParserTypeSupport {
     return this.parseVarDeclaratorList(type);
   }
 
-  protected parseDeclarationList(
-    type: TypeNode,
-  ): Array<VarDeclNode | ArrayDeclNode> | null {
+  protected parseDeclarationList(type: TypeNode): Array<VarDeclNode | ArrayDeclNode> | null {
     const declarations = this.parseDeclaratorList(type);
     if (declarations === null) {
       return null;
@@ -72,9 +70,7 @@ export abstract class BaseParserSupport extends BaseParserTypeSupport {
     return declarations;
   }
 
-  protected parseDeclaratorList(
-    type: TypeNode,
-  ): Array<VarDeclNode | ArrayDeclNode> | null {
+  protected parseDeclaratorList(type: TypeNode): Array<VarDeclNode | ArrayDeclNode> | null {
     const declarations: Array<VarDeclNode | ArrayDeclNode> = [];
     const first = this.parseSingleDeclarator(type);
     if (first === null) {
@@ -114,9 +110,7 @@ export abstract class BaseParserSupport extends BaseParserTypeSupport {
     return declarations;
   }
 
-  protected parseSingleDeclarator(
-    type: TypeNode,
-  ): VarDeclNode | ArrayDeclNode | null {
+  protected parseSingleDeclarator(type: TypeNode): VarDeclNode | ArrayDeclNode | null {
     const declarator = this.parseNamedDeclarator(type, { allowUnsizedArrays: false });
     if (declarator === null) {
       return null;
@@ -201,7 +195,10 @@ export abstract class BaseParserSupport extends BaseParserTypeSupport {
   }
 
   protected parseTemplateConstructorCall(type: TypeNode, nameToken: Token): ExprNode | null {
-    if (!isTemplateInstanceType(type) || !this.consumeSymbol("(", "expected '(' after constructor")) {
+    if (
+      !isTemplateInstanceType(type) ||
+      !this.consumeSymbol("(", "expected '(' after constructor")
+    ) {
       return null;
     }
     const args: ExprNode[] = [];

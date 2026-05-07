@@ -11,12 +11,12 @@ import {
 import type { DebugValueView, TypeNode } from "@/types";
 import {
   isArrayType,
+  isIteratorType,
   isMapType,
   isPairType,
   isPointerType,
   isPrimitiveType,
   isReferenceType,
-  isIteratorType,
   isTemplateInstanceType,
   isTupleType,
   isVectorType,
@@ -202,10 +202,7 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
           value.kind === "object" && value.objectKind === "iterator"
             ? this.typeToRuntimeString(value.type)
             : value.kind;
-        this.fail(
-          `cannot convert '${actualType}' to '${this.typeToRuntimeString(type)}'`,
-          line,
-        );
+        this.fail(`cannot convert '${actualType}' to '${this.typeToRuntimeString(type)}'`, line);
       }
       return value;
     }
@@ -297,7 +294,9 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
             return `(${this.serializeValue(value.first)}, ${this.serializeValue(value.second)})`;
           case "map":
             return `{${value.entries
-              .map((entry) => `${this.serializeValue(entry.key)}: ${this.serializeValue(entry.value)}`)
+              .map(
+                (entry) => `${this.serializeValue(entry.key)}: ${this.serializeValue(entry.value)}`,
+              )
               .join(", ")}}`;
           case "tuple":
             return `(${value.values.map((element) => this.serializeValue(element)).join(", ")})`;
@@ -367,7 +366,7 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
     if (isPrimitiveType(left) || isPrimitiveType(right)) {
       return isPrimitiveType(left) && isPrimitiveType(right) && left.name === right.name;
     }
-  if (isArrayType(left) || isArrayType(right)) {
+    if (isArrayType(left) || isArrayType(right)) {
       return (
         isArrayType(left) &&
         isArrayType(right) &&

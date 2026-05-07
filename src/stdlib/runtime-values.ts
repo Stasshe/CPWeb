@@ -6,7 +6,10 @@ export function cloneRuntimeValue(value: RuntimeValue, ctx: EvalCtx): RuntimeVal
     if (value.objectKind === "vector") {
       const orig = ctx.arrays.get(value.ref);
       if (orig === undefined) return value;
-      return ctx.allocVector(value.type, orig.values.map((v) => cloneRuntimeValue(v, ctx)));
+      return ctx.allocVector(
+        value.type,
+        orig.values.map((v) => cloneRuntimeValue(v, ctx)),
+      );
     }
     if (value.objectKind === "pair") {
       return {

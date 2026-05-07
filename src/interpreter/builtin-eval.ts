@@ -7,8 +7,8 @@ import {
 } from "@/stdlib/builtins/compare";
 import {
   dispatchFreeCall,
-  dispatchMemberAccess as dispatchStdlibMemberAccess,
   dispatchMethodCall,
+  dispatchMemberAccess as dispatchStdlibMemberAccess,
   dispatchTemplateCall,
   type EvalCtx,
 } from "@/stdlib/eval";

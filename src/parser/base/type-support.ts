@@ -4,9 +4,9 @@ import {
   isPrimitiveType,
   isTemplateInstanceType,
   pointerType,
-  templateInstanceType,
   primitiveType,
   referenceType,
+  templateInstanceType,
 } from "@/types";
 import { BaseParserCore } from "./core";
 

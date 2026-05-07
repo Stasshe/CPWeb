@@ -534,10 +534,7 @@ export abstract class ExpressionParser extends BaseParser {
     const next = this.tokens[startIndex + 1];
     if (
       startToken === undefined ||
-      !(
-        startToken.kind === "identifier" ||
-        startToken.kind === "keyword"
-      ) ||
+      !(startToken.kind === "identifier" || startToken.kind === "keyword") ||
       next?.kind !== "symbol" ||
       next.text !== "<"
     ) {

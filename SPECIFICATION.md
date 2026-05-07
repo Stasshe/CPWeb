@@ -463,11 +463,16 @@ cin >> s;          // string（空白区切りで1トークン）
 cout << x;
 cout << "ans: " << x << "\n";
 cout << endl;     // "\n" と同等（フラッシュは内部的に無視）
+cout << fixed << setprecision(15) << x << "\n";
 ```
 
 - `int`、`long long`、`double`、`bool`（`0`/`1` で出力）、`string`、`pair`、`tuple`、pointer の出力に対応
 - `pair` / `tuple` は `(a, b, ...)` 形式で出力する
 - `"\n"` と `endl` は同等として扱う。`endl` は組み込み識別子として `"\n"` 相当の文字列に評価され、flush は行わない
+- `fixed` は I/O マニピュレータとして受理する。以降の `double` 出力を固定小数点形式にする
+- `setprecision(n)` は I/O マニピュレータとして受理する。`fixed` と組み合わせると小数点以下 n 桁、単独では有効数字 n 桁で出力する
+- マニピュレータの効果はプログラム終了まで持続する（`cout` / `cerr` 共通のストリーム状態として管理）
+- `#include <iomanip>` を受理する（no-op として処理、`bits/stdc++.h` でも同様）
 
 ### 8.3 `cerr`
 
@@ -489,6 +494,7 @@ cerr << "debug: " << x << "\n";
 | `abs(x)` | `int abs(int x)` | 絶対値 |
 | `max(a, b)` | `int max(int a, int b)` | 大きい方 |
 | `min(a, b)` | `int min(int a, int b)` | 小さい方 |
+| `setprecision(n)` | `void setprecision(int n)` | 出力精度設定マニピュレータ（`cout <<` / `cerr <<` 専用） |
 | `swap(a, b)` | `void swap(T& a, T& b)` | 値の交換（参照渡しとして特別扱い） |
 | `make_pair(a, b)` | `pair<T, U> make_pair(T a, U b)` | `pair` の生成 |
 | `make_tuple(a, b, ...)` | `tuple<T...> make_tuple(T...)` | `tuple` の生成 |

@@ -1,9 +1,6 @@
 import type { CheckCtx } from "@/stdlib/check-context";
 import { registerFreeCall } from "@/stdlib/check-registry";
-import {
-  describeBuiltinArity,
-  getBuiltinRangeAlgorithmSpec,
-} from "@/stdlib/metadata";
+import { describeBuiltinArity, getBuiltinRangeAlgorithmSpec } from "@/stdlib/metadata";
 import { isValidBuiltinTemplateComparatorCall } from "@/stdlib/template-exprs";
 import { iteratorContainerType, vectorElementType } from "@/stdlib/template-types";
 import type { ExprNode, TypeNode, VectorTypeNode } from "@/types";
@@ -130,9 +127,7 @@ function sameExpr(left: ExprNode, right: ExprNode): boolean {
       return right.kind === "Identifier" && left.name === right.name;
     case "Literal":
       return (
-        right.kind === "Literal" &&
-        left.valueType === right.valueType &&
-        left.value === right.value
+        right.kind === "Literal" && left.valueType === right.valueType && left.value === right.value
       );
     case "TemplateIdExpr":
       return (
@@ -213,7 +208,10 @@ function sameExpr(left: ExprNode, right: ExprNode): boolean {
 }
 
 function sameExprList(left: ExprNode[], right: ExprNode[]): boolean {
-  return left.length === right.length && left.every((expr, index) => sameExpr(expr, right[index] as ExprNode));
+  return (
+    left.length === right.length &&
+    left.every((expr, index) => sameExpr(expr, right[index] as ExprNode))
+  );
 }
 
 registerFreeCall("sort", checkSort);

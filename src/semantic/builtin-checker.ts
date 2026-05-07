@@ -1,9 +1,9 @@
 import {
+  type CheckCtx,
   dispatchFreeCall,
   dispatchMemberAccess,
   dispatchMethodCall,
   dispatchTemplateCall,
-  type CheckCtx,
 } from "@/stdlib/check";
 import { getBuiltinTemplateComparatorSpec } from "@/stdlib/metadata";
 import { isTypeTemplateArg } from "@/stdlib/template-exprs";

@@ -140,11 +140,7 @@ function applyMethod(
         const fillArg = args[1] as ExprNode | undefined;
         const fillProto =
           fillArg !== undefined
-            ? ctx.castToElementType(
-                ctx.evaluateExpr(fillArg),
-                vectorElementType(vStore.type),
-                line,
-              )
+            ? ctx.castToElementType(ctx.evaluateExpr(fillArg), vectorElementType(vStore.type), line)
             : null;
         while (vStore.values.length < targetSize) {
           vStore.values.push(

@@ -370,4 +370,64 @@ int main() {
     }
     expect(result.errors[0]?.message).toMatch(/unknown vector method/);
   });
+
+  it("fixed + setprecision output double with fixed decimal places", () => {
+    const source = `
+#include <iostream>
+#include <iomanip>
+using namespace std;
+int main() {
+  double x = 1.0 / 3.0;
+  cout << fixed << setprecision(6) << x << "\\n";
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("0.333333\n");
+  });
+
+  it("setprecision(15) outputs 15 decimal places", () => {
+    const source = `
+#include <iostream>
+#include <iomanip>
+using namespace std;
+int main() {
+  double x = 1.0 / 7.0;
+  cout << fixed << setprecision(15) << x << "\\n";
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe((1.0 / 7.0).toFixed(15) + "\n");
+  });
+
+  it("setprecision persists across multiple cout values", () => {
+    const source = `
+#include <iostream>
+#include <iomanip>
+using namespace std;
+int main() {
+  cout << fixed << setprecision(2);
+  cout << 3.14159 << "\\n";
+  cout << 2.71828 << "\\n";
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("3.14\n2.72\n");
+  });
+
+  it("setprecision without fixed uses significant digits", () => {
+    const source = `
+#include <iostream>
+#include <iomanip>
+using namespace std;
+int main() {
+  cout << setprecision(4) << 3.14159 << "\\n";
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe((3.14159).toPrecision(4) + "\n");
+  });
 });
