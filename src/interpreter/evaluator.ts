@@ -71,6 +71,8 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         return { kind: "string", value: expr.value as string };
       case "Identifier":
         if (expr.name === "endl") return { kind: "string", value: "\n" };
+        if (expr.name === "nullptr")
+          return { kind: "pointer", pointeeType: { kind: "PrimitiveType", name: "void" }, target: null };
         return this.resolve(expr.name, expr.line);
       case "TemplateIdExpr":
         return this.fail(`'${expr.template}' was not declared in this scope`, expr.line);

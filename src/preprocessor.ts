@@ -212,7 +212,6 @@ function normalizeCompatibilitySyntax(line: string): string {
     return "";
   }
 
-  result = result.replace(/\bnullptr\b/g, "0");
   result = result.replace(/\bios_base::/g, "");
   result = result.replace(/\bios::/g, "");
   result = result.replace(/\bsigned\s+main\s*\(/, "int main(");

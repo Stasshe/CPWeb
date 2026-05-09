@@ -49,7 +49,10 @@ export function preserveIntLongLong(a: TypeNode | null, b: TypeNode | null): Typ
 }
 
 export function isNullPointerConstantExpr(expr: ExprNode): boolean {
-  return expr.kind === "Literal" && expr.valueType === "int" && expr.value === 0n;
+  return (
+    (expr.kind === "Literal" && expr.valueType === "int" && expr.value === 0n) ||
+    (expr.kind === "Identifier" && expr.name === "nullptr")
+  );
 }
 
 export function isNullPointerType(type: TypeNode): boolean {

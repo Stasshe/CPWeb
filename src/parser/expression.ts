@@ -441,6 +441,15 @@ export abstract class ExpressionParser extends BaseParser {
       };
     }
 
+    if (this.matchKeyword("nullptr")) {
+      const t = this.previous();
+      return {
+        kind: "Identifier",
+        name: "nullptr",
+        ...this.rangeFrom(t, t),
+      };
+    }
+
     if (this.match("identifier")) {
       const id = this.previous();
       return {

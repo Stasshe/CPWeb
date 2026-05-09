@@ -116,6 +116,9 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
     }
     if (isPointerType(type)) {
       if (value.kind === "pointer") {
+        if (value.target === null) {
+          return { kind: "pointer", pointeeType: type.pointeeType, target: null };
+        }
         if (!this.sameType(type.pointeeType, value.pointeeType)) {
           this.fail(
             `cannot convert '${this.typeToRuntimeString({ kind: "PointerType", pointeeType: value.pointeeType })}' to '${this.typeToRuntimeString(type)}'`,

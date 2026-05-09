@@ -423,6 +423,7 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
     case "Identifier":
       if (expr.name === "endl") return { kind: "PrimitiveType", name: "string" };
       if (expr.name === "fixed") return { kind: "PrimitiveType", name: "void" };
+      if (expr.name === "nullptr") return { kind: "PrimitiveType", name: "int" };
       return unwrapReference(resolveSymbol(expr.name, expr.line, expr.col, context));
     case "IndexExpr": {
       const targetType = inferExprType(expr.target, context);

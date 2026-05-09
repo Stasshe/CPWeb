@@ -29,6 +29,7 @@ const KEYWORDS = new Set<string>([
   "cout",
   "cerr",
   "endl",
+  "nullptr",
 ]);
 
 const TWO_CHAR_SYMBOLS = new Set<string>([
