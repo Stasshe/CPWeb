@@ -28,6 +28,9 @@ export function evalMapMethod(
   if (args.length < mapSpec.minArgs || args.length > mapSpec.maxArgs) {
     ctx.fail(`${method} requires no arguments`, line);
   }
+  if (mapSpec.name === "empty") {
+    return { kind: "bool", value: receiver.entries.length === 0 };
+  }
   return { kind: "int", value: BigInt(receiver.entries.length) };
 }
 

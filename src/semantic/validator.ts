@@ -1,11 +1,5 @@
 import { getTemplateTypeSpec, getUnsupportedTemplateTypeSpec } from "@/stdlib/metadata";
-import {
-  mapKeyType,
-  mapValueType,
-  pairFirstType,
-  pairSecondType,
-  vectorElementType,
-} from "@/stdlib/template-types";
+import { mapKeyType, mapValueType, vectorElementType } from "@/stdlib/template-types";
 import type {
   CompileError,
   ExprNode,
@@ -19,15 +13,12 @@ import type {
 import {
   isArrayType,
   isMapType,
-  isPairType,
   isPointerType,
   isPrimitiveType,
   isReferenceType,
-  isTupleType,
   isVectorType,
   pairType,
   typeToString,
-  vectorType,
 } from "@/types";
 import {
   type ValidationContext,
@@ -42,7 +33,6 @@ import {
   isAssignable,
   isAssignableExpr,
   resolveConditionalType,
-  sameType,
 } from "./type-compat";
 import {
   baseElementType,
@@ -53,7 +43,6 @@ import {
   isInputTargetType,
   isIntType,
   isNullPointerConstantExpr,
-  isNullPointerType,
   isNumericType,
   isStringType,
   preserveIntLongLong,
@@ -735,6 +724,15 @@ function validateTypeNode(
           col,
           `${type.template.name} requires ${spec.arity.toString()} template argument(s)`,
         );
+      }
+      if (isMapType(type)) {
+        const keyType = mapKeyType(type);
+        if (
+          !isPrimitiveType(keyType) ||
+          (keyType.name !== "int" && keyType.name !== "long long" && keyType.name !== "string")
+        ) {
+          pushError(context, line, col, "map key type must be int, long long, or string");
+        }
       }
       for (const templateArg of type.templateArgs) {
         validateTypeNode(templateArg, line, col, context);

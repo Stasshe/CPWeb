@@ -623,8 +623,6 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
           return { kind: "double", value: numeric.left * numeric.right };
         case "/":
           return { kind: "double", value: numeric.left / numeric.right };
-        case "%":
-          return { kind: "double", value: numeric.left % numeric.right };
         default:
           this.fail(`unsupported binary operator '${expr.operator}'`, expr.line);
       }

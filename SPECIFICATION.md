@@ -17,15 +17,21 @@
 
 | 機能 | 備考 |
 |---|---|
-| 動的メモリ（`malloc`, `new`, `free`, `delete`） | |
+| 明示的な動的メモリ操作（`malloc`, `new`, `free`, `delete`） | `vector` / `map` などコンテナの内部可変長管理はこれに含まない |
 | 構造体・クラス（`struct`, `class`） | |
-| テンプレート（`template<>`） | 関数テンプレート宣言、実引数からの型推論による呼び出し、明示テンプレート実引数呼び出し（`f<int>(x)`）を限定対応する。`vector<T>`、`map<K,V>`、`pair<T,U>`、`tuple<T...>`、`make_pair`、`make_tuple`、`get<I>`、`greater<int>()` / `greater<>()` などの標準ライブラリ風記法をサポートする。クラステンプレート・変数テンプレート・部分特殊化・明示特殊化・完全なオーバーロード解決は非対応 |
+| 汎用テンプレート機構 | クラステンプレート・変数テンプレート・部分特殊化・明示特殊化・完全なオーバーロード解決は非対応。限定的な関数テンプレートと標準ライブラリ風 template-call は対応（§3.8 参照） |
 | 関数ポインタ | |
 | 名前空間（`namespace`） | `using namespace std;` のみ特別扱いで許可 |
-| プリプロセッサ | `#include <bits/stdc++.h>`、`#include <iostream>`、`#include <vector>`、`#include <map>`、`#define` に対応 |
-| C / C++ キャスト構文（`static_cast<>` 等） | C スタイルキャスト `(T)x` および関数形式キャスト `T(x)` は数値型（`int`・`long long`・`double`・`char`・`bool`）間で対応。`static_cast` などテンプレート形式は非対応 |
+| `static_cast<>` などテンプレート形式キャスト | C スタイルキャスト `(T)x` および関数形式キャスト `T(x)` は数値型（`int`・`long long`・`double`・`char`・`bool`）間で対応 |
 | 参照戻り値 | 参照変数・参照引数・range-for 束縛のみ対応 |
+| 条件付きプリプロセッサ（`#if`, `#ifdef`, `#ifndef`, `#endif`） | |
 
+プリプロセッサの対応範囲：
+- `#include <bits/stdc++.h>`、`<iostream>`、`<vector>`、`<map>`、`<algorithm>`、`<functional>`、`<iomanip>`、`<utility>`、`<tuple>` を受理（no-op として処理）
+- `#define` はオブジェクト形式マクロ（`#define PI 3.14`）および関数形式マクロ（`#define rep(i,n) for(int i=0;i<n;i++)`）の両方に対応する
+- `using T = X;` 型エイリアスおよびトップレベルの `const T x = v;` は定数マクロとして展開する
+- 条件付きディレクティブ（`#if`, `#ifdef` 等）は非対応
+  
 ---
 
 ## 3. 型システム
@@ -38,14 +44,15 @@
 | `long long` | JS `BigInt` | `int` と同一として扱う |
 | `double` | JS `number` | 浮動小数点 |
 | `bool` | JS `boolean` | `true` / `false` リテラル |
-| `char` | JS `string` | 長さ 1 の Unicode 文字 |
+| `char` | JS `string` | 長さ 1 の Unicode code point（C++ 互換ではなく C++ 風） |
 | `string` | JS `string` | cin/cout での入出力に使用 |
 
-- `int` と `long long` は同一の内部型（JS `BigInt`）として扱う。オーバーフロー検査や 64bit 範囲制約は行わない
+- `int` と `long long` は同一の内部値表現（JS `BigInt`）として扱う。オーバーフロー検査や 64bit 範囲制約は行わない
+- ただし静的型タグとしては `int` / `long long` を区別して保持する。変数宣言・テンプレート引数・関数シグネチャには元の型名を用いる
 - 型の等価性チェックでは `int` と `long long` は同一とみなす（テンプレート引数・代入・関数引数など）
-- 算術演算・bit 演算・シフト演算・単項 `-`・`~`・三項演算子の結果型は、いずれかのオペランドが `long long` なら `long long`、そうでなければ `int` を返す（型伝播）
-- `++` / `--` 演算子の結果型も同様に演算対象の型を保持する
-- `char` は長さ 1 の文字として保持するが、数値演算・比較では整数型としても扱える
+- 算術演算・bit 演算・シフト演算・単項 `-`・`~`・三項演算子の結果型は、いずれかのオペランドが `long long` なら `long long`、そうでなければ `int` を返す（型タグ伝播）
+- `++` / `--` 演算子の結果型も演算対象の型タグを保持する
+- `char` は長さ 1 の Unicode code point として保持するが、数値演算・比較では整数型としても扱える。日本語など多バイト文字（BMP 内の code point）も 1 文字として格納できる。サロゲートペアが必要な code point（U+10000 以上）は未対応
 - `int` / `long long` と `double` の間では数値演算・代入・引数受け渡し・三項演算子の共通型解決で暗黙変換を許可する
 - `char` と `int` / `long long` / `double` の間では数値演算・代入・引数受け渡し・三項演算子の共通型解決で暗黙変換を許可する
 - `char` と `string` の間では、`string` 側が長さ 1 のときのみ代入・引数受け渡しが実行時に成功する。長さ 1 以外は実行時エラー
@@ -180,7 +187,27 @@ int main() {
 - `get<I>(t)` は template-call として扱い、stdlib registry 経由で解決する
 - 構造化束縛（`auto [x, y]`）は非対応
 
-### 3.8 関数テンプレート（限定対応）
+### 3.8 `map`
+
+```cpp
+map<string, int> mp;
+mp["a"]++;
+cout << mp.size() << "\n";
+for (auto& p : mp) {
+    cout << p.first << " " << p.second << "\n";
+}
+```
+
+- `map<K, V>` を型としてサポートする
+- キー型は `int`、`long long`、`string` のみ対応する（`pair` などの複合型はキーにできない）
+- 値型はプリミティブ型・`vector`・`pair`・`tuple` を含む任意の型を使える
+- `m[key]` でアクセスする。キーが存在しない場合は値型のデフォルト値で自動挿入する（C++ の `std::map` と同じ挙動）
+- 対応メソッド：`m.size()`（要素数）、`m.empty()`（空判定）
+- range-for で走査した場合、各要素は `pair<K, V>` として得られる
+- 走査順序は挿入順。C++ の `std::map`（キー昇順）とは異なる（JS `Map` の insertion order）
+- `<`、`>`、`==` などによる `map` 同士の比較は非対応
+
+### 3.9 関数テンプレート（限定対応）
 
 ```cpp
 template<typename T>
@@ -261,7 +288,7 @@ int main() {
 
 - 数値演算は `int` / `long long` 同士、`double` 同士、または両者の混在を受理する
 - `/` は `double` を含む場合は浮動小数除算、整数同士の場合は `BigInt` による整数除算
-- `%` は現在の実装では `double` に対しても JS `%` 相当で動作する
+- `%` は `int` / `long long` のみ対応する。`double` に対する使用はコンパイルエラー
 - bit 演算・シフト演算は `int` / `long long` のみ対応
 
 ### 5.2 比較演算子
@@ -295,7 +322,7 @@ int main() {
 | `i--` | 後置 | 評価後にデクリメント |
 | `--i` | 前置 | デクリメント後に評価 |
 
-- `int` 型変数に使用可能
+- `int` / `long long` 型変数に使用可能
 - pointer に対する `++` / `--` もサポートする（配列要素/文字列要素を指すポインタに限定）
 
 ### 5.6 三項演算子
@@ -391,7 +418,7 @@ return expr;      // 非 void 関数
 ```
 
 - `void` 関数で `return expr;` はコンパイルエラー
-- 非 `void` 関数の末尾到達時は型ごとの既定値を返す（`int` は `0`、`double` は `0.0`、pointer は null、`pair` / `tuple` は要素ごとの既定値など）
+- 非 `void` 関数の末尾到達（`return` なしで関数を抜ける）は C++ では未定義動作だが、この処理系ではデバッグ容易性のため実行時エラー（`Runtime Error: non-void function returned without a value`）とする
 
 ---
 
@@ -567,6 +594,7 @@ Runtime Error: <message>
 | 未初期化変数の読み取り | `Runtime Error: use of uninitialized variable 'x'` |
 | 条件式の型不正 | `Runtime Error: cannot convert value to bool` |
 | `double` から `int` への不正変換 | `Runtime Error: cannot convert 'double' to 'int'` |
+| 非 `void` 関数の末尾到達 | `Runtime Error: non-void function returned without a value` |
 
 ### 10.3 エラー情報の構造
 
@@ -599,7 +627,7 @@ type RuntimeErrorInfo = {
 
 | 種別 | メッセージ例 |
 |---|---|
-| 現状なし | 実装は非 `void` 関数の末尾到達を警告ではなくデフォルト値返却として扱う |
+| 現状なし | — |
 
 ---
 
@@ -731,16 +759,21 @@ type DebugInfo = {
 ## 13. 文法（実装に即した EBNF）
 
 ```ebnf
+(* プリプロセッサ（#include / #define）はパース前に処理済み。EBNF には現れない *)
 program       = { using_namespace_std } { global_decl } { function } ;
 
-(* using namespace std; のみ受理。型エイリアス（using T = X;）は非対応 *)
+(* using namespace std; のみ受理。型エイリアス（using T = X;）はマクロ展開で処理 *)
 using_namespace_std = "using" "namespace" "std" ";" ;
 
-(* グローバル宣言 *)
+(* グローバル宣言：プリミティブ変数・固定長配列・vector を許可 *)
 global_decl   = var_decl | array_decl | vector_decl ;
 
-(* 関数 *)
-function      = type declarator "(" param_list ")" block ;
+(* 関数：通常関数 or 関数テンプレート *)
+function      = template_function | plain_function ;
+plain_function = type declarator "(" param_list ")" block ;
+template_function = "template" "<" template_param_list ">" plain_function ;
+template_param_list = template_param { "," template_param } ;
+template_param = "typename" ident ;
 param_list    = [ param { "," param } ] ;
 param         = type declarator ;
 
@@ -824,7 +857,8 @@ postfix_expr  = primary { postfix_op } ;
 postfix_op    = "++" | "--"
               | "[" expr "]"
               | "(" arg_list ")"
-              | "." method_call ;
+              | "." method_call
+              | "." ident ;              (* member access: p.first, p.second *)
 primary       = int_lit
               | float_lit
               | bool_lit
@@ -862,7 +896,7 @@ type ProgramNode = {
   functions: (FunctionDeclNode | TemplateFunctionDeclNode)[]
 }
 
-type GlobalDeclNode = VarDeclNode | ArrayDeclNode
+type GlobalDeclNode = VarDeclNode | ArrayDeclNode | VectorDeclNode
 
 type StatementNode =
   | BlockStmtNode

@@ -186,6 +186,16 @@ export function inferBinaryType(
     return { kind: "PrimitiveType", name: "string" };
   }
 
+  if (expr.operator === "%") {
+    if (left !== null && !isIntType(left)) {
+      pushError(expr.left.line, expr.left.col, "type mismatch: '%' requires integer operands");
+    }
+    if (right !== null && !isIntType(right)) {
+      pushError(expr.right.line, expr.right.col, "type mismatch: '%' requires integer operands");
+    }
+    return preserveIntLongLong(left, right);
+  }
+
   if (
     expr.operator === "<<" ||
     expr.operator === ">>" ||

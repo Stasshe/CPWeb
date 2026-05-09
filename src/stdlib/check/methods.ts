@@ -40,7 +40,7 @@ export function checkMapMethod(
   if (args.length < mapSpec.minArgs || args.length > mapSpec.maxArgs) {
     ctx.pushError(line, col, `${method} requires no arguments`);
   }
-  return { kind: "PrimitiveType", name: "int" };
+  return { kind: "PrimitiveType", name: mapSpec.returns };
 }
 
 registerMemberHandler({

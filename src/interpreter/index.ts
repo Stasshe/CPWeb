@@ -126,7 +126,10 @@ class Interpreter extends InterpreterEvaluator {
       if (this.isVoidType(fn.returnType)) {
         return { kind: "void" };
       }
-      return this.defaultValueForDeclaredType(fn.returnType, false, fn.line);
+      if (fn.name === "main") {
+        return { kind: "int", value: 0n };
+      }
+      this.fail("non-void function returned without a value", fn.line);
     } catch (signal) {
       if (signal instanceof ReturnSignal) {
         this.captureFinalDebugInfo(fn.name);
