@@ -14,6 +14,17 @@ export function compareValues(
     return comparePrimitive(operands.left, operands.right, operator);
   }
 
+  if (left.kind === "pointer" && right.kind === "int" && right.value === 0n) {
+    const equal = left.target === null;
+    if (operator !== "==" && operator !== "!=") fail("type mismatch in comparison", line);
+    return operator === "==" ? equal : !equal;
+  }
+  if (left.kind === "int" && left.value === 0n && right.kind === "pointer") {
+    const equal = right.target === null;
+    if (operator !== "==" && operator !== "!=") fail("type mismatch in comparison", line);
+    return operator === "==" ? equal : !equal;
+  }
+
   if (left.kind !== right.kind) {
     fail("type mismatch in comparison", line);
   }

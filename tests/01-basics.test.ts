@@ -440,18 +440,20 @@ int main() {
       expect(result.output.stdout).toBe("-42\n");
     });
 
-    it("null pointer constant 0 is valid for long long pointer (semantic)", () => {
+    it("null pointer comparison with 0 / nullptr works for long long pointer", () => {
       const source = `
 #include <bits/stdc++.h>
 using namespace std;
-long long *getNull() { return 0; }
 int main() {
   long long *q = 0;
-  return 0;
+  cout << (q == nullptr ? 1 : 0) << "\\n";
+  cout << (q != 0 ? 1 : 0) << "\\n";
 }
 `;
-      const result = compile(source);
-      expect(result.ok).toBe(true);
+      const result = compileAndRun(source, "");
+      expect(result.status).toBe("done");
+      if (result.status !== "done") return;
+      expect(result.output.stdout).toBe("1\n0\n");
     });
   });
 });
