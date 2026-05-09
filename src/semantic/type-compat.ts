@@ -16,13 +16,19 @@ import {
   isNullPointerType,
   isNumericType,
   isStringType,
+  normalizeIntName,
+  preserveIntLongLong,
 } from "./type-utils";
 
 export type PushErrorFn = (line: number, col: number, message: string) => void;
 
 export function sameType(left: TypeNode, right: TypeNode): boolean {
   if (isPrimitiveType(left) || isPrimitiveType(right)) {
-    return isPrimitiveType(left) && isPrimitiveType(right) && left.name === right.name;
+    return (
+      isPrimitiveType(left) &&
+      isPrimitiveType(right) &&
+      normalizeIntName(left.name) === normalizeIntName(right.name)
+    );
   }
   if (isArrayType(left) || isArrayType(right)) {
     return isArrayType(left) && isArrayType(right) && sameType(left.elementType, right.elementType);
@@ -193,7 +199,7 @@ export function inferBinaryType(
     if (right !== null && !isIntType(right)) {
       pushError(expr.right.line, expr.right.col, "type mismatch: expected int");
     }
-    return { kind: "PrimitiveType", name: "int" };
+    return preserveIntLongLong(left, right);
   }
 
   if (left !== null && !isNumericType(left)) {
@@ -208,7 +214,7 @@ export function inferBinaryType(
   if (right !== null && isDoubleType(right)) {
     return { kind: "PrimitiveType", name: "double" };
   }
-  return { kind: "PrimitiveType", name: "int" };
+  return preserveIntLongLong(left, right);
 }
 
 export function resolveConditionalType(
@@ -269,7 +275,7 @@ export function resolveConditionalType(
     if (isDoubleType(thenType) || isDoubleType(elseType)) {
       return { kind: "PrimitiveType", name: "double" };
     }
-    return { kind: "PrimitiveType", name: "int" };
+    return preserveIntLongLong(thenType, elseType);
   }
 
   if (isAssignable(thenType, elseType) && !isAssignable(elseType, thenType)) {

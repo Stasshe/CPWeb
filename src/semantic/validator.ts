@@ -56,6 +56,7 @@ import {
   isNullPointerType,
   isNumericType,
   isStringType,
+  preserveIntLongLong,
   unwrapReference,
 } from "./type-utils";
 
@@ -519,13 +520,13 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
         }
         return operandType !== null && isDoubleType(operandType)
           ? { kind: "PrimitiveType", name: "double" }
-          : { kind: "PrimitiveType", name: "int" };
+          : preserveIntLongLong(operandType, null);
       }
       if (expr.operator === "~") {
         if (operandType !== null && !isIntType(operandType)) {
           pushError(context, expr.line, expr.col, "type mismatch: expected int");
         }
-        return { kind: "PrimitiveType", name: "int" };
+        return preserveIntLongLong(operandType, null);
       }
       if (!isAssignableExpr(expr.operand)) {
         pushError(context, expr.line, expr.col, "increment/decrement target must be a variable");
@@ -535,7 +536,7 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
       }
       return operandType !== null && isPointerType(operandType)
         ? operandType
-        : { kind: "PrimitiveType", name: "int" };
+        : preserveIntLongLong(operandType, null);
     }
     case "BinaryExpr": {
       const left = inferExprType(expr.left, context);

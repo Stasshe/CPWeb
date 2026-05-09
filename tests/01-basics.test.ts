@@ -335,4 +335,123 @@ int main() {
     }
     expect(result.errors[0]?.message).toBe("character literal must contain exactly one character");
   });
+
+  describe("int / long long equivalence", () => {
+    it("long long arithmetic preserves type (no spurious type error)", () => {
+      const source = `
+#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  long long a = 3;
+  long long b = 4;
+  long long c = a + b;
+  long long d = a * b - c;
+  cout << c << "\\n" << d << "\\n";
+}
+`;
+      const result = compileAndRun(source, "");
+      expect(result.status).toBe("done");
+      if (result.status !== "done") return;
+      expect(result.output.stdout).toBe("7\n5\n");
+    });
+
+    it("long long bit/shift ops preserve long long type", () => {
+      const source = `
+#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  long long x = 1;
+  long long y = x << 40;
+  cout << y << "\\n";
+}
+`;
+      const result = compileAndRun(source, "");
+      expect(result.status).toBe("done");
+      if (result.status !== "done") return;
+      expect(result.output.stdout).toBe("1099511627776\n");
+    });
+
+    it("int and long long are assignable to each other without error", () => {
+      const source = `
+#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  int a = 5;
+  long long b = a;
+  int c = (int)b;
+  cout << b << "\\n" << c << "\\n";
+}
+`;
+      const result = compileAndRun(source, "");
+      expect(result.status).toBe("done");
+      if (result.status !== "done") return;
+      expect(result.output.stdout).toBe("5\n5\n");
+    });
+
+    it("ternary with int and long long branches", () => {
+      const source = `
+#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  long long x = 10;
+  int y = 3;
+  long long z = (x > 5) ? x : (long long)y;
+  cout << z << "\\n";
+}
+`;
+      const result = compileAndRun(source, "");
+      expect(result.status).toBe("done");
+      if (result.status !== "done") return;
+      expect(result.output.stdout).toBe("10\n");
+    });
+
+    it("template with long long args resolves correctly", () => {
+      const source = `
+#include <bits/stdc++.h>
+using namespace std;
+template<typename T>
+void chmin(T& a, T b) { if (b < a) a = b; }
+int main() {
+  long long a = 10;
+  long long b = 5;
+  chmin(a, b);
+  cout << a << "\\n";
+}
+`;
+      const result = compileAndRun(source, "");
+      expect(result.status).toBe("done");
+      if (result.status !== "done") return;
+      expect(result.output.stdout).toBe("5\n");
+    });
+
+    it("unary minus on long long", () => {
+      const source = `
+#include <bits/stdc++.h>
+using namespace std;
+int main() {
+  long long x = 42;
+  long long y = -x;
+  cout << y << "\\n";
+}
+`;
+      const result = compileAndRun(source, "");
+      expect(result.status).toBe("done");
+      if (result.status !== "done") return;
+      expect(result.output.stdout).toBe("-42\n");
+    });
+
+    it("null pointer constant 0 is valid for long long pointer (semantic)", () => {
+      const source = `
+#include <bits/stdc++.h>
+using namespace std;
+long long *getNull() { return 0; }
+int main() {
+  long long *q = 0;
+  return 0;
+}
+`;
+      const result = compile(source);
+      expect(result.ok).toBe(true);
+    });
+  });
 });

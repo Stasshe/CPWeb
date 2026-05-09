@@ -1,5 +1,6 @@
 import type { RuntimeValue } from "@/runtime/value";
 import { stringifyValue } from "@/runtime/value";
+import { normalizeIntName } from "@/semantic/type-utils";
 import {
   mapKeyType,
   mapValueType,
@@ -364,7 +365,11 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
 
   protected sameType(left: TypeNode, right: TypeNode): boolean {
     if (isPrimitiveType(left) || isPrimitiveType(right)) {
-      return isPrimitiveType(left) && isPrimitiveType(right) && left.name === right.name;
+      return (
+        isPrimitiveType(left) &&
+        isPrimitiveType(right) &&
+        normalizeIntName(left.name) === normalizeIntName(right.name)
+      );
     }
     if (isArrayType(left) || isArrayType(right)) {
       return (

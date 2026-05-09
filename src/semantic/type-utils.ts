@@ -30,12 +30,30 @@ export function isStringType(type: TypeNode): boolean {
   return isPrimitiveType(type) && type.name === "string";
 }
 
+export function normalizeIntName(name: string): string {
+  return name === "long long" ? "int" : name;
+}
+
+export function isIntLongLong(type: TypeNode): boolean {
+  return isPrimitiveType(type) && (type.name === "int" || type.name === "long long");
+}
+
+export function preserveIntLongLong(a: TypeNode | null, b: TypeNode | null): TypeNode {
+  if (a !== null && isPrimitiveType(a) && a.name === "long long") {
+    return { kind: "PrimitiveType", name: "long long" };
+  }
+  if (b !== null && isPrimitiveType(b) && b.name === "long long") {
+    return { kind: "PrimitiveType", name: "long long" };
+  }
+  return { kind: "PrimitiveType", name: "int" };
+}
+
 export function isNullPointerConstantExpr(expr: ExprNode): boolean {
   return expr.kind === "Literal" && expr.valueType === "int" && expr.value === 0n;
 }
 
 export function isNullPointerType(type: TypeNode): boolean {
-  return isPrimitiveType(type) && type.name === "int";
+  return isPrimitiveType(type) && (type.name === "int" || type.name === "long long");
 }
 
 export function isInputTargetType(type: TypeNode): boolean {
