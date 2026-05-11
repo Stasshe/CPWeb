@@ -200,6 +200,8 @@ function substituteExpr(expr: ExprNode, map: TypeArgMap): ExprNode {
       };
     case "CastExpr":
       return { ...expr, operand: substituteExpr(expr.operand, map) };
+    case "InitListExpr":
+      return { ...expr, elements: expr.elements.map((e) => substituteExpr(e, map)) };
   }
 }
 

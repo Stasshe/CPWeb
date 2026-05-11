@@ -204,6 +204,8 @@ function sameExpr(left: ExprNode, right: ExprNode): boolean {
         left.castType.name === right.castType.name &&
         sameExpr(left.operand, right.operand)
       );
+    case "InitListExpr":
+      return right.kind === "InitListExpr" && sameExprList(left.elements, right.elements);
   }
 }
 

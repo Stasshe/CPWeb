@@ -235,6 +235,11 @@ export type CastExprNode = NodeBase & {
   operand: ExprNode;
 };
 
+export type InitListExprNode = NodeBase & {
+  kind: "InitListExpr";
+  elements: ExprNode[];
+};
+
 export type ExprNode =
   | AssignExprNode
   | ConditionalExprNode
@@ -250,7 +255,8 @@ export type ExprNode =
   | IndexExprNode
   | IdentifierExprNode
   | LiteralExprNode
-  | CastExprNode;
+  | CastExprNode
+  | InitListExprNode;
 
 export type AssignTargetNode =
   | IdentifierExprNode

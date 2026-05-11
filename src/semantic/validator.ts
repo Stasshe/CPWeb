@@ -281,7 +281,18 @@ function validateDecl(
           validateReferenceBinding(stmt.initializer, stmt.type.referredType, context);
         }
       } else if (stmt.initializer !== null) {
-        validateExpr(stmt.initializer, context, stmt.type);
+        if (stmt.initializer.kind === "InitListExpr") {
+          if (!isVectorType(stmt.type)) {
+            pushError(context, stmt.line, stmt.col, "initializer list requires vector type");
+          } else {
+            const elemType = vectorElementType(stmt.type);
+            for (const elem of stmt.initializer.elements) {
+              validateExpr(elem, context, elemType);
+            }
+          }
+        } else {
+          validateExpr(stmt.initializer, context, stmt.type);
+        }
       }
       defineSymbol(stmt.name, stmt.type, stmt.line, stmt.col, context);
       return;
@@ -578,6 +589,9 @@ export function inferExprType(expr: ExprNode, context: ValidationContext): TypeN
       }
       return expr.castType;
     }
+    case "InitListExpr":
+      for (const elem of expr.elements) validateExpr(elem, context);
+      return null;
   }
 }
 

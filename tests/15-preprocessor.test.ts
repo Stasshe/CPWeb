@@ -501,3 +501,83 @@ int main() {
     expect(result.output.stdout).toBe("1\n2\n3\n");
   });
 });
+
+describe("Vector initializer list", () => {
+  it("vector<int> = {a, b, c}", () => {
+    const source = `
+int main() {
+  vector<int> v = {10, 20, 30};
+  for (int i = 0; i < 3; i++) cout << v[i] << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("10\n20\n30\n");
+  });
+
+  it("vector<string> = {a, b}", () => {
+    const source = `
+int main() {
+  vector<string> v = {"hello", "world"};
+  for (int i = 0; i < 2; i++) cout << v[i] << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("hello\nworld\n");
+  });
+
+  it("empty initializer list", () => {
+    const source = `
+int main() {
+  vector<int> v = {};
+  cout << v.size() << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("0\n");
+  });
+
+  it("initializer list with expressions", () => {
+    const source = `
+int main() {
+  int a = 3;
+  vector<int> v = {a * 2, a + 1, a - 1};
+  for (int i = 0; i < 3; i++) cout << v[i] << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("6\n4\n2\n");
+  });
+
+  it("sort after initializer list", () => {
+    const source = `
+int main() {
+  vector<int> v = {5, 2, 8, 1, 9};
+  sort(v.begin(), v.end());
+  for (int i = 0; i < 5; i++) cout << v[i] << "\\n";
+  return 0;
+}
+`;
+    const result = compileAndRun(source);
+    expect(result.status).toBe("done");
+    expect(result.output.stdout).toBe("1\n2\n5\n8\n9\n");
+  });
+
+  it("initializer list on non-vector type is a compile error", () => {
+    const source = `
+int main() {
+  int x = {1, 2};
+  return 0;
+}
+`;
+    const result = compile(source);
+    expect(result.ok).toBe(false);
+  });
+});

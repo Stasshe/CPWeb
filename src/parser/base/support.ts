@@ -5,6 +5,7 @@ import type {
   AssignTargetNode,
   ExprNode,
   ForInitNode,
+  InitListExprNode,
   RangeForStmtNode,
   TemplateArgNode,
   TemplateIdExprNode,
@@ -12,7 +13,7 @@ import type {
   TypeNode,
   VarDeclNode,
 } from "@/types";
-import { isTemplateInstanceType } from "@/types";
+import { isTemplateInstanceType, isVectorType } from "@/types";
 import { BaseParserTypeSupport } from "./type-support";
 
 export abstract class BaseParserSupport extends BaseParserTypeSupport {
@@ -129,7 +130,11 @@ export abstract class BaseParserSupport extends BaseParserTypeSupport {
   protected parseSingleVarDeclarator(type: TypeNode, nameToken: Token): VarDeclNode | null {
     let initializer: ExprNode | null = null;
     if (this.matchSymbol("=")) {
-      initializer = this.parseExpression();
+      if (isVectorType(type) && this.checkSymbol("{")) {
+        initializer = this.parseInitListExpr();
+      } else {
+        initializer = this.parseExpression();
+      }
     } else if (isTemplateInstanceType(type) && this.checkSymbol("(")) {
       initializer = this.parseTemplateConstructorCall(type, nameToken);
       if (initializer === null) {
@@ -144,6 +149,29 @@ export abstract class BaseParserSupport extends BaseParserTypeSupport {
       ...(initializer === null
         ? this.rangeFrom(nameToken, nameToken)
         : this.rangeFromNode(nameToken, initializer)),
+    };
+  }
+
+  private parseInitListExpr(): InitListExprNode {
+    const open = this.peek();
+    this.consumeSymbol("{", "expected '{'");
+    const elements: ExprNode[] = [];
+    if (!this.checkSymbol("}")) {
+      elements.push(this.parseExpression());
+      while (this.matchSymbol(",")) {
+        if (this.checkSymbol("}")) break;
+        elements.push(this.parseExpression());
+      }
+    }
+    const close = this.previous();
+    this.consumeSymbol("}", "expected '}'");
+    return {
+      kind: "InitListExpr",
+      elements,
+      line: open.line,
+      col: open.col,
+      endLine: close.line,
+      endCol: close.col + close.text.length,
     };
   }
 

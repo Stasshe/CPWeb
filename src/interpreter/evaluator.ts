@@ -1,11 +1,7 @@
 import type { RuntimeLocation, RuntimeValue } from "@/runtime/value";
 import { sameLocation } from "@/runtime/value";
 import { inferTypeArgs, instantiateFunction } from "@/semantic/template-instantiator";
-import {
-  compareSortableValues,
-  compareValues,
-  toNumericOperands,
-} from "@/stdlib/builtins/compare";
+import { compareSortableValues, compareValues, toNumericOperands } from "@/stdlib/builtins/compare";
 import type { EvalCtx } from "@/stdlib/eval-context";
 import { isTupleGetTemplateCall } from "@/stdlib/template-exprs";
 import { mapValueType, tupleElementTypes, vectorElementType } from "@/stdlib/template-types";
@@ -72,7 +68,11 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
       case "Identifier":
         if (expr.name === "endl") return { kind: "string", value: "\n" };
         if (expr.name === "nullptr")
-          return { kind: "pointer", pointeeType: { kind: "PrimitiveType", name: "void" }, target: null };
+          return {
+            kind: "pointer",
+            pointeeType: { kind: "PrimitiveType", name: "void" },
+            target: null,
+          };
         return this.resolve(expr.name, expr.line);
       case "TemplateIdExpr":
         return this.fail(`'${expr.template}' was not declared in this scope`, expr.line);
@@ -244,6 +244,8 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
         );
         return assigned;
       }
+      case "InitListExpr":
+        return this.fail("initializer list is not valid in expression context", expr.line);
     }
   }
 

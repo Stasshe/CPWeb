@@ -507,6 +507,13 @@ class Interpreter extends InterpreterEvaluator {
     initializer: ExprNode,
     line: number,
   ): RuntimeValue {
+    if (initializer.kind === "InitListExpr" && isVectorType(type)) {
+      const elemType = vectorElementType(type);
+      const values = initializer.elements.map((elem) =>
+        this.assertType(elemType, this.evaluateExpr(elem), line),
+      );
+      return this.allocateVector(type, values);
+    }
     if (type.kind === "ReferenceType") {
       if (
         initializer.kind !== "Identifier" &&

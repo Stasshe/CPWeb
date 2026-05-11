@@ -263,7 +263,79 @@ function normalizeCompatibility(line: string): string {
     return Number.isInteger(e) && e >= 0 && e <= 18 ? `${base}${"0".repeat(e)}` : _m;
   });
   s = s.replace(/\b(\d+)(ULL|ull|UL|ul|LU|lu|LL|ll|L|l|U|u)\b/g, "$1");
+  s = normalizeCinComma(s);
   return s;
+}
+
+// cin >> a, b → split at top-level comma into separate statements.
+// If inside a brace-less for-body, wrap both parts in {} to preserve loop variable scope.
+function normalizeCinComma(line: string): string {
+  const cinIdx = line.search(/\bcin\b/);
+  if (cinIdx < 0 || !line.slice(cinIdx).includes(">>")) return line;
+
+  let depth = 0;
+  let inStr = false;
+  let inChr = false;
+  let escaped = false;
+
+  for (let i = cinIdx; i < line.length; i++) {
+    const ch = line[i] ?? "";
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (!inChr && ch === '"') {
+      inStr = !inStr;
+      continue;
+    }
+    if (!inStr && ch === "'") {
+      inChr = !inChr;
+      continue;
+    }
+    if (inStr || inChr) continue;
+    if (ch === "(" || ch === "[" || ch === "{") {
+      depth++;
+      continue;
+    }
+    if (ch === ")" || ch === "]" || ch === "}") {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth === 0 && ch === ",") {
+      const bodyStart = findBracelessForBody(line, cinIdx);
+      if (bodyStart !== null) {
+        return `${line.slice(0, bodyStart)}{${line.slice(bodyStart, i)};${line.slice(i + 1)}}`;
+      }
+      return `${line.slice(0, i)};${line.slice(i + 1)}`;
+    }
+  }
+  return line;
+}
+
+function findBracelessForBody(line: string, cinIdx: number): number | null {
+  const forIdx = line.search(/\bfor\s*\(/);
+  if (forIdx < 0 || forIdx > cinIdx) return null;
+  let depth = 0;
+  for (let i = forIdx; i < line.length; i++) {
+    const ch = line[i] ?? "";
+    if (ch === "(") {
+      depth++;
+      continue;
+    }
+    if (ch === ")") {
+      depth--;
+      if (depth === 0) {
+        let bodyStart = i + 1;
+        while (/\s/.test(line[bodyStart] ?? "")) bodyStart++;
+        return line[bodyStart] === "{" ? null : bodyStart;
+      }
+    }
+  }
+  return null;
 }
 
 // ── Lexer helpers ─────────────────────────────────────────────────────────────
