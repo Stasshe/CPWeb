@@ -4,6 +4,7 @@ import type {
   PairTypeNode,
   PrimitiveTypeNode,
   ReferenceTypeNode,
+  StructTypeNode,
   TemplateInstanceTypeNode,
   TupleTypeNode,
   TypeNode,
@@ -29,6 +30,13 @@ export type RuntimeLocation =
       type: TypeNode;
     }
   | { kind: "object"; parent: RuntimeLocation; objectKind: "tuple"; index: number; type: TypeNode }
+  | {
+      kind: "object";
+      parent: RuntimeLocation;
+      objectKind: "struct";
+      member: string;
+      type: TypeNode;
+    }
   | { kind: "string"; parent: RuntimeLocation; index: number };
 
 export type RuntimeObjectValue =
@@ -47,7 +55,13 @@ export type RuntimeObjectValue =
       second: RuntimeValue;
     }
   | { kind: "object"; objectKind: "tuple"; type: TupleTypeNode; values: RuntimeValue[] }
-  | { kind: "object"; objectKind: "iterator"; type: IteratorTypeNode; ref: number; index: number };
+  | { kind: "object"; objectKind: "iterator"; type: IteratorTypeNode; ref: number; index: number }
+  | {
+      kind: "object";
+      objectKind: "struct";
+      type: StructTypeNode;
+      fields: Map<string, RuntimeValue>;
+    };
 
 export type RuntimeValue =
   | { kind: "int"; value: bigint }
@@ -126,6 +140,13 @@ export function sameLocation(left: RuntimeLocation | null, right: RuntimeLocatio
           sameLocation(left.parent, right.parent)
         );
       }
+      if (left.objectKind === "struct") {
+        return (
+          right.objectKind === "struct" &&
+          left.member === right.member &&
+          sameLocation(left.parent, right.parent)
+        );
+      }
       return false;
     case "string":
       return (
@@ -177,7 +198,10 @@ export function stringifyValue(value: RuntimeValue, format?: OutputFormat): stri
           return "<vector>";
         case "iterator":
           return "<iterator>";
+        case "struct":
+          return `{${[...value.fields.entries()].map(([k, v]) => `${k}: ${stringifyValue(v, format)}`).join(", ")}}`;
       }
+      // biome-ignore lint/suspicious/noFallthroughSwitchClause: inner switch is exhaustive
     case "void":
       return "";
     case "array":

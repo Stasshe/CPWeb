@@ -7,6 +7,7 @@ import type {
   ProgramNode,
   RangeForStmtNode,
   StatementNode,
+  StructDeclNode,
   TemplateFunctionDeclNode,
   TypeNode,
 } from "@/types";
@@ -16,6 +17,7 @@ import {
   isPointerType,
   isPrimitiveType,
   isReferenceType,
+  isStructType,
   isVectorType,
   pairType,
   typeToString,
@@ -53,10 +55,12 @@ export type { ValidationContext };
 
 export function validateProgram(program: ProgramNode): CompileError[] {
   const { functions, templateFunctions, errors } = collectFunctions(program);
+  const structs = new Map<string, StructDeclNode>(program.structs.map((s) => [s.name, s]));
   const context: ValidationContext = {
     errors,
     functions,
     templateFunctions,
+    structs,
     scopes: [new Map()],
     loopDepth: 0,
     currentReturnType: null,
@@ -285,13 +289,31 @@ function validateDecl(
         }
       } else if (stmt.initializer !== null) {
         if (stmt.initializer.kind === "InitListExpr") {
-          if (!isVectorType(stmt.type)) {
-            pushError(context, stmt.line, stmt.col, "initializer list requires vector type");
-          } else {
+          if (isVectorType(stmt.type)) {
             const elemType = vectorElementType(stmt.type);
             for (const elem of stmt.initializer.elements) {
               validateExpr(elem, context, elemType);
             }
+          } else if (isStructType(stmt.type)) {
+            const structDecl = context.structs.get(stmt.type.name);
+            if (structDecl === undefined) {
+              pushError(context, stmt.line, stmt.col, `unknown struct '${stmt.type.name}'`);
+            } else {
+              for (let i = 0; i < stmt.initializer.elements.length; i += 1) {
+                const elem = stmt.initializer.elements[i];
+                const member = structDecl.members[i];
+                if (elem !== undefined) {
+                  validateExpr(elem, context, member?.type);
+                }
+              }
+            }
+          } else {
+            pushError(
+              context,
+              stmt.line,
+              stmt.col,
+              "initializer list requires vector or struct type",
+            );
           }
         } else {
           validateExpr(stmt.initializer, context, stmt.type);
@@ -717,6 +739,11 @@ function validateTypeNode(
   switch (type.kind) {
     case "PrimitiveType":
     case "NamedType":
+      return;
+    case "StructType":
+      if (!context.structs.has(type.name)) {
+        pushError(context, line, col, `unknown type '${type.name}'`);
+      }
       return;
     case "ArrayType":
       validateTypeNode(type.elementType, line, col, context);

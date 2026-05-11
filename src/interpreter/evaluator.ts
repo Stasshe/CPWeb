@@ -398,8 +398,23 @@ export abstract class InterpreterEvaluator extends InterpreterRuntime {
     }
     const parent = this.resolveAssignTargetLocation(receiverExpr, line);
     const receiver = this.readLocation(parent, line);
+
+    if (receiver.kind === "object" && receiver.objectKind === "struct") {
+      const fieldType = receiver.fields.get(member);
+      if (fieldType === undefined) {
+        this.fail(`'${receiver.type.name}' has no member named '${member}'`, line);
+      }
+      return {
+        kind: "object",
+        objectKind: "struct",
+        parent,
+        member,
+        type: this.runtimeValueToType(fieldType, line),
+      };
+    }
+
     if (receiver.kind !== "object" || receiver.objectKind !== "pair") {
-      this.fail("type mismatch: expected pair", line);
+      this.fail("type mismatch: expected pair or struct", line);
     }
     if (member === "first") {
       return {

@@ -18,6 +18,7 @@ import {
   isPointerType,
   isPrimitiveType,
   isReferenceType,
+  isStructType,
   isTemplateInstanceType,
   isTupleType,
   isVectorType,
@@ -50,6 +51,18 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
       }
       this.fail("element type cannot be void", line);
     }
+    if (isStructType(type)) {
+      const structDecl = this.structRegistry.get(type.name);
+      if (structDecl === undefined) {
+        this.fail(`unknown struct '${type.name}'`, line);
+      }
+      const fields = new Map<string, RuntimeValue>();
+      for (const member of structDecl.members) {
+        fields.set(member.name, this.defaultValueForType(member.type, line));
+      }
+      return { kind: "object", objectKind: "struct", type, fields };
+    }
+
     if (isVectorType(type)) {
       return this.allocateVector(type, []);
     }
@@ -150,6 +163,19 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
         first: this.assertType(pairFirstType(type), value.first, line),
         second: this.assertType(pairSecondType(type), value.second, line),
       };
+    }
+
+    if (isStructType(type)) {
+      if (value.kind === "uninitialized") {
+        return { kind: "uninitialized", expectedType: type };
+      }
+      if (value.kind !== "object" || value.objectKind !== "struct") {
+        this.fail(`cannot convert '${value.kind}' to '${type.name}'`, line);
+      }
+      if (value.type.name !== type.name) {
+        this.fail(`cannot convert '${value.type.name}' to '${type.name}'`, line);
+      }
+      return value;
     }
 
     if (isMapType(type)) {
@@ -253,6 +279,7 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
     if (isPrimitiveType(type)) {
       return type.name;
     }
+    if (isStructType(type)) return type.name;
     if (isArrayType(type)) return "array";
     if (isVectorType(type)) return "vector";
     if (isMapType(type)) return "map";
@@ -304,7 +331,10 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
               .join(", ")}}`;
           case "tuple":
             return `(${value.values.map((element) => this.serializeValue(element)).join(", ")})`;
+          case "struct":
+            return `{${[...value.fields.entries()].map(([k, v]) => `${k}: ${this.serializeValue(v)}`).join(", ")}}`;
         }
+        // biome-ignore lint/suspicious/noFallthroughSwitchClause: inner switch is exhaustive
       case "pointer":
         return value.target === null ? "nullptr" : `<pointer:${typeToString(value.pointeeType)}>`;
       case "reference":
@@ -373,6 +403,9 @@ export abstract class InterpreterRuntimeTypeSupport extends InterpreterRuntimeCo
         isPrimitiveType(right) &&
         normalizeIntName(left.name) === normalizeIntName(right.name)
       );
+    }
+    if (isStructType(left) || isStructType(right)) {
+      return isStructType(left) && isStructType(right) && left.name === right.name;
     }
     if (isArrayType(left) || isArrayType(right)) {
       return (

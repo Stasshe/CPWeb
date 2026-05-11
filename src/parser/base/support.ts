@@ -13,7 +13,7 @@ import type {
   TypeNode,
   VarDeclNode,
 } from "@/types";
-import { isPrimitiveType, isTemplateInstanceType, isVectorType } from "@/types";
+import { isPrimitiveType, isStructType, isTemplateInstanceType, isVectorType } from "@/types";
 import { BaseParserTypeSupport } from "./type-support";
 
 export abstract class BaseParserSupport extends BaseParserTypeSupport {
@@ -130,7 +130,7 @@ export abstract class BaseParserSupport extends BaseParserTypeSupport {
   protected parseSingleVarDeclarator(type: TypeNode, nameToken: Token): VarDeclNode | null {
     let initializer: ExprNode | null = null;
     if (this.matchSymbol("=")) {
-      if (isVectorType(type) && this.checkSymbol("{")) {
+      if ((isVectorType(type) || isStructType(type)) && this.checkSymbol("{")) {
         initializer = this.parseInitListExpr();
       } else {
         initializer = this.parseExpression();

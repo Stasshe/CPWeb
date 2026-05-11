@@ -1,4 +1,12 @@
-import type { BlockStmtNode, CompileError, ExprNode, SourceRange, Token, TypeNode } from "@/types";
+import type {
+  BlockStmtNode,
+  CompileError,
+  ExprNode,
+  SourceRange,
+  StructDeclNode,
+  Token,
+  TypeNode,
+} from "@/types";
 
 export abstract class BaseParserCore {
   protected readonly tokens: Token[];
@@ -12,6 +20,8 @@ export abstract class BaseParserCore {
   protected readonly typeAliasMap = new Map<string, TypeNode>();
 
   protected readonly constValueMap = new Map<string, bigint>();
+
+  protected readonly structRegistry = new Map<string, StructDeclNode>();
 
   protected lastTypeWasConst = false;
 
@@ -157,7 +167,12 @@ export abstract class BaseParserCore {
 
   protected synchronizeTopLevel(): void {
     while (!this.isAtEnd()) {
-      if (this.checkTypeStart() || this.checkKeyword("using")) {
+      if (
+        this.checkTypeStart() ||
+        this.checkKeyword("using") ||
+        this.checkKeyword("struct") ||
+        this.checkKeyword("template")
+      ) {
         return;
       }
       this.advance();

@@ -29,6 +29,8 @@ export function substituteTypeNode(type: TypeNode, map: TypeArgMap): TypeNode {
       return map.get(type.name) ?? type;
     case "PrimitiveType":
       return type;
+    case "StructType":
+      return type;
     case "ArrayType":
       return { ...type, elementType: substituteTypeNode(type.elementType, map) };
     case "PointerType":
@@ -375,6 +377,8 @@ function typeNodeKey(type: TypeNode): string {
     case "PrimitiveType":
       return type.name;
     case "NamedType":
+      return type.name;
+    case "StructType":
       return type.name;
     case "ArrayType":
       return `arr(${typeNodeKey(type.elementType)})`;

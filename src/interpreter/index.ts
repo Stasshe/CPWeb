@@ -13,7 +13,7 @@ import type {
   RuntimeErrorInfo,
   StatementNode,
 } from "@/types";
-import { isVectorType, pairType } from "@/types";
+import { isStructType, isVectorType, pairType } from "@/types";
 import type { RuntimeArgument } from "./evaluator";
 import { InterpreterEvaluator } from "./evaluator";
 import { buildDebugInfoView, type InterpreterOptions, PauseTrap, toRuntimeError } from "./runtime";
@@ -115,7 +115,7 @@ class Interpreter extends InterpreterEvaluator {
       if (arg.kind !== "value") {
         this.fail("invalid argument binding", param.line);
       }
-      this.define(param.name, this.assertType(param.type, arg.value, param.line));
+      this.define(param.name, this.copyValue(this.assertType(param.type, arg.value, param.line)));
     }
 
     try {
@@ -515,6 +515,28 @@ class Interpreter extends InterpreterEvaluator {
         this.assertType(elemType, this.evaluateExpr(elem), line),
       );
       return this.allocateVector(type, values);
+    }
+    if (initializer.kind === "InitListExpr" && isStructType(type)) {
+      const structDecl = this.structRegistry.get(type.name);
+      if (structDecl === undefined) {
+        this.fail(`unknown struct '${type.name}'`, line);
+      }
+      if (initializer.elements.length > structDecl.members.length) {
+        this.fail(`too many initializers for '${type.name}'`, line);
+      }
+      const fields = new Map<string, RuntimeValue>();
+      for (let i = 0; i < structDecl.members.length; i += 1) {
+        const member = structDecl.members[i];
+        if (member === undefined) continue;
+        const elem = initializer.elements[i];
+        fields.set(
+          member.name,
+          elem !== undefined
+            ? this.assertType(member.type, this.evaluateExpr(elem), line)
+            : this.defaultValueForType(member.type, line),
+        );
+      }
+      return { kind: "object", objectKind: "struct", type, fields };
     }
     if (type.kind === "ReferenceType") {
       if (

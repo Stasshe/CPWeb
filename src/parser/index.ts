@@ -2,6 +2,8 @@ import type {
   CompileResult,
   GlobalDeclNode,
   ProgramNode,
+  StructDeclNode,
+  StructMemberNode,
   TemplateFunctionDeclNode,
   Token,
 } from "@/types";
@@ -18,8 +20,20 @@ class Parser extends ExpressionParser {
   parseProgram(): CompileResult {
     const globals: GlobalDeclNode[] = [];
     const functions: ProgramNode["functions"] = [];
+    const structs: StructDeclNode[] = [];
 
     while (!this.isAtEnd()) {
+      if (this.checkKeyword("struct")) {
+        const structDecl = this.parseStructDecl();
+        if (structDecl !== null) {
+          structs.push(structDecl);
+          this.structRegistry.set(structDecl.name, structDecl);
+        } else {
+          this.synchronizeTopLevel();
+        }
+        continue;
+      }
+
       if (this.matchKeyword("using")) {
         const next = this.peek();
         const afterNext = this.tokens[this.index + 1];
@@ -144,6 +158,7 @@ class Parser extends ExpressionParser {
       kind: "Program",
       globals,
       functions,
+      structs,
       line: start.line,
       col: start.col,
       endLine: this.previous().endLine,
@@ -151,6 +166,47 @@ class Parser extends ExpressionParser {
     };
 
     return { ok: true, program };
+  }
+
+  private parseStructDecl(): StructDeclNode | null {
+    const startToken = this.peek();
+    this.advance(); // consume 'struct'
+    const nameToken = this.consumeIdentifier("expected struct name");
+    if (nameToken === null) return null;
+    if (!this.consumeSymbol("{", "expected '{' after struct name")) return null;
+
+    const members: StructMemberNode[] = [];
+    while (!this.checkSymbol("}") && !this.isAtEnd()) {
+      const memberType = this.parseType();
+      if (memberType === null) {
+        this.synchronizeStatement();
+        continue;
+      }
+      while (true) {
+        const memberName = this.consumeIdentifier("expected member name");
+        if (memberName === null) break;
+        members.push({
+          kind: "StructMember",
+          type: memberType,
+          name: memberName.text,
+          ...this.rangeToPrevious(memberName),
+        });
+        if (!this.matchSymbol(",")) break;
+      }
+      if (!this.consumeSymbol(";", "expected ';' after struct member")) {
+        this.synchronizeStatement();
+      }
+    }
+
+    if (!this.consumeSymbol("}", "expected '}' after struct body")) return null;
+    if (!this.consumeSymbol(";", "expected ';' after struct declaration")) return null;
+
+    return {
+      kind: "StructDecl",
+      name: nameToken.text,
+      members,
+      ...this.rangeFromNode(startToken, this.previous()),
+    };
   }
 
   private parseTemplateFunction(): TemplateFunctionDeclNode | null {

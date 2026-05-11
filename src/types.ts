@@ -63,6 +63,23 @@ export type ReferenceTypeNode = {
   referredType: TypeNode;
 };
 
+export type StructMemberNode = NodeBase & {
+  kind: "StructMember";
+  type: TypeNode;
+  name: string;
+};
+
+export type StructDeclNode = NodeBase & {
+  kind: "StructDecl";
+  name: string;
+  members: StructMemberNode[];
+};
+
+export type StructTypeNode = {
+  kind: "StructType";
+  name: string;
+};
+
 export type TypeNode =
   | PrimitiveTypeNode
   | ArrayTypeNode
@@ -74,7 +91,8 @@ export type TypeNode =
   | TupleTypeNode
   | IteratorTypeNode
   | PointerTypeNode
-  | ReferenceTypeNode;
+  | ReferenceTypeNode
+  | StructTypeNode;
 
 export type SourceLocation = {
   line: number;
@@ -101,6 +119,7 @@ export type ProgramNode = NodeBase & {
   kind: "Program";
   globals: GlobalDeclNode[];
   functions: (FunctionDeclNode | TemplateFunctionDeclNode)[];
+  structs: StructDeclNode[];
 };
 
 export type GlobalDeclNode = VarDeclNode | ArrayDeclNode;
@@ -435,7 +454,8 @@ export type DebugValueView = {
     | "pointer"
     | "reference"
     | "void"
-    | "uninitialized";
+    | "uninitialized"
+    | "struct";
   value: string;
 };
 
@@ -632,6 +652,8 @@ export function typeToString(type: TypeNode): string {
       return type.name;
     case "NamedType":
       return type.name;
+    case "StructType":
+      return type.name;
     case "ArrayType":
       return `${typeToString(type.elementType)}[]`;
     case "TemplateInstanceType":
@@ -643,4 +665,12 @@ export function typeToString(type: TypeNode): string {
     case "ReferenceType":
       return `${typeToString(type.referredType)}&`;
   }
+}
+
+export function structType(name: string): StructTypeNode {
+  return { kind: "StructType", name };
+}
+
+export function isStructType(type: TypeNode): type is StructTypeNode {
+  return type.kind === "StructType";
 }

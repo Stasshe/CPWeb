@@ -34,6 +34,12 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
       return this.typeAliasMap.get(token.text) as TypeNode;
     }
 
+    // Struct types
+    if (token.kind === "identifier" && this.structRegistry.has(token.text)) {
+      this.advance();
+      return { kind: "StructType", name: token.text };
+    }
+
     const templateType = this.parseTemplateInstanceType();
     if (templateType !== null) {
       return templateType;
@@ -88,6 +94,7 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
       if (this.activeTypeParams.length > 0 && this.activeTypeParams.includes(token.text))
         return true;
       if (this.typeAliasMap.has(token.text)) return true;
+      if (this.structRegistry.has(token.text)) return true;
     }
     return false;
   }
@@ -118,6 +125,9 @@ export abstract class BaseParserTypeSupport extends BaseParserCore {
   protected isVoidTypeNode(type: TypeNode): boolean {
     if (isPrimitiveType(type)) {
       return type.name === "void";
+    }
+    if (type.kind === "StructType") {
+      return false;
     }
     if (type.kind === "PointerType") {
       return this.isVoidTypeNode(type.pointeeType);

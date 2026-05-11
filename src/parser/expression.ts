@@ -7,6 +7,7 @@ import type {
   ConditionalExprNode,
   DerefExprNode,
   ExprNode,
+  MemberAccessExprNode,
   TemplateArgNode,
   TemplateIdExprNode,
   UnaryExprNode,
@@ -332,6 +333,26 @@ export abstract class ExpressionParser extends BaseParser {
           kind: "MemberAccessExpr",
           receiver: expr,
           member: methodToken.text,
+          ...this.rangeToPrevious(expr),
+        };
+        continue;
+      }
+
+      // p->member desugars to (*p).member
+      if (this.matchSymbol("->")) {
+        const memberToken = this.consumeIdentifier("expected member name after '->'");
+        if (memberToken === null) {
+          break;
+        }
+        const deref: DerefExprNode = {
+          kind: "DerefExpr",
+          pointer: expr,
+          ...this.rangeFrom(expr, expr),
+        };
+        expr = {
+          kind: "MemberAccessExpr",
+          receiver: deref,
+          member: memberToken.text,
           ...this.rangeToPrevious(expr),
         };
         continue;

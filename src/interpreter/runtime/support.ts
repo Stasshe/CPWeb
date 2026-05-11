@@ -1,7 +1,7 @@
 import type { RuntimeLocation, RuntimeValue } from "@/runtime/value";
 import { mapKeyType, mapValueType, vectorElementType } from "@/stdlib/template-types";
 import type { ArrayTypeNode, ExprNode, TypeNode } from "@/types";
-import { isArrayType, isMapType, pairType } from "@/types";
+import { isArrayType, isMapType, isStructType, pairType } from "@/types";
 import type { Scope } from "./core";
 import { InterpreterRuntimeTypeSupport } from "./type-support";
 
@@ -139,7 +139,7 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
       return current;
     }
     if (current.kind === "object") {
-      return this.assertType(current.type, value, line);
+      return this.copyValue(this.assertType(current.type, value, line));
     }
     if (current.kind === "void") {
       this.fail("cannot assign to void", line);
@@ -280,6 +280,18 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
             ? this.readLocation(memberValue.target, line)
             : memberValue;
         }
+        if (location.objectKind === "struct") {
+          if (parent.kind !== "object" || parent.objectKind !== "struct") {
+            this.fail("type mismatch: expected struct", line);
+          }
+          const fieldValue = parent.fields.get(location.member);
+          if (fieldValue === undefined) {
+            this.fail(`struct has no member '${location.member}'`, line);
+          }
+          return fieldValue.kind === "reference"
+            ? this.readLocation(fieldValue.target, line)
+            : fieldValue;
+        }
         if (parent.kind !== "object" || parent.objectKind !== "tuple") {
           this.fail("type mismatch: expected tuple", line);
         }
@@ -397,6 +409,22 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
           );
           return;
         }
+        if (location.objectKind === "struct") {
+          if (current.kind !== "object" || current.objectKind !== "struct") {
+            this.fail("type mismatch: expected struct", line);
+          }
+          if (!isStructType(current.type) || !current.fields.has(location.member)) {
+            this.fail(`struct has no member '${location.member}'`, line);
+          }
+          const nextFields = new Map(current.fields);
+          nextFields.set(location.member, this.assertType(location.type, value, line));
+          this.writeLocation(
+            location.parent,
+            { kind: "object", objectKind: "struct", type: current.type, fields: nextFields },
+            line,
+          );
+          return;
+        }
         if (current.kind !== "object" || current.objectKind !== "tuple") {
           this.fail("type mismatch: expected tuple", line);
         }
@@ -436,6 +464,58 @@ export abstract class InterpreterRuntimeSupport extends InterpreterRuntimeTypeSu
         this.writeLocation(location.parent, { kind: "string", value: next }, line);
         return;
       }
+    }
+  }
+
+  protected copyValue(value: RuntimeValue): RuntimeValue {
+    switch (value.kind) {
+      case "object":
+        switch (value.objectKind) {
+          case "struct": {
+            const fields = new Map<string, RuntimeValue>();
+            for (const [k, v] of value.fields) {
+              fields.set(k, this.copyValue(v));
+            }
+            return { kind: "object", objectKind: "struct", type: value.type, fields };
+          }
+          case "pair":
+            return {
+              kind: "object",
+              objectKind: "pair",
+              type: value.type,
+              first: this.copyValue(value.first),
+              second: this.copyValue(value.second),
+            };
+          case "tuple":
+            return {
+              kind: "object",
+              objectKind: "tuple",
+              type: value.type,
+              values: value.values.map((v) => this.copyValue(v)),
+            };
+          case "map":
+            return {
+              kind: "object",
+              objectKind: "map",
+              type: value.type,
+              entries: value.entries.map((e) => ({
+                key: this.copyValue(e.key),
+                value: this.copyValue(e.value),
+              })),
+            };
+          case "vector": {
+            const store = this.arrays.get(value.ref);
+            if (store === undefined) return value;
+            const copiedValues = store.values.map((v) => this.copyValue(v));
+            return this.allocateVector(value.type, copiedValues);
+          }
+          case "iterator":
+            return value;
+          default:
+            return value;
+        }
+      default:
+        return value;
     }
   }
 

@@ -14,6 +14,7 @@ const KEYWORDS = new Set<string>([
   "vector",
   "using",
   "namespace",
+  "struct",
   "template",
   "typename",
   "if",
@@ -48,6 +49,7 @@ const TWO_CHAR_SYMBOLS = new Set<string>([
   "%=",
   "<<",
   ">>",
+  "->",
 ]);
 
 const ONE_CHAR_SYMBOLS = new Set<string>([

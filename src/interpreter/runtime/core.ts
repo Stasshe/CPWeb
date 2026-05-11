@@ -10,6 +10,7 @@ import type {
   FunctionDeclNode,
   ProgramNode,
   SourceRange,
+  StructDeclNode,
   TemplateFunctionDeclNode,
   TypeNode,
 } from "@/types";
@@ -51,6 +52,8 @@ export class PauseTrap {
 export abstract class InterpreterRuntimeCore {
   protected readonly program: ProgramNode;
 
+  protected readonly structRegistry: Map<string, StructDeclNode>;
+
   protected readonly inputTokens: string[];
 
   protected readonly options: InterpreterOptions;
@@ -87,6 +90,7 @@ export abstract class InterpreterRuntimeCore {
 
   constructor(program: ProgramNode, input: string, options: InterpreterOptions) {
     this.program = program;
+    this.structRegistry = new Map(program.structs.map((s) => [s.name, s]));
     this.options = options;
     this.inputTokens = input
       .split(/\s+/)

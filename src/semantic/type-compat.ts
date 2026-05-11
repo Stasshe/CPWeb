@@ -6,6 +6,7 @@ import {
   isPointerType,
   isPrimitiveType,
   isReferenceType,
+  isStructType,
   isTemplateInstanceType,
   isTupleType,
   typeToString,
@@ -23,6 +24,9 @@ import {
 export type PushErrorFn = (line: number, col: number, message: string) => void;
 
 export function sameType(left: TypeNode, right: TypeNode): boolean {
+  if (isStructType(left) || isStructType(right)) {
+    return isStructType(left) && isStructType(right) && left.name === right.name;
+  }
   if (isPrimitiveType(left) || isPrimitiveType(right)) {
     return (
       isPrimitiveType(left) &&
@@ -61,6 +65,9 @@ export function sameType(left: TypeNode, right: TypeNode): boolean {
 }
 
 export function isAssignable(source: TypeNode, target: TypeNode): boolean {
+  if (isStructType(source) && isStructType(target)) {
+    return source.name === target.name;
+  }
   if (sameType(source, target)) {
     return true;
   }

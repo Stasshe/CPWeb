@@ -15,6 +15,7 @@ import type {
   TemplateFunctionDeclNode,
   TypeNode,
 } from "@/types";
+import { isStructType } from "@/types";
 import { inferTypeArgs, instantiateFunction, instantiationKey } from "./template-instantiator";
 import { isAssignable, isAssignableExpr } from "./type-compat";
 
@@ -22,6 +23,7 @@ export type ValidationContext = {
   errors: CompileError[];
   functions: Map<string, import("@/types").FunctionDeclNode>;
   templateFunctions: Map<string, import("@/types").TemplateFunctionDeclNode>;
+  structs: Map<string, import("@/types").StructDeclNode>;
   scopes: Map<string, TypeNode>[];
   loopDepth: number;
   currentReturnType: TypeNode | null;
@@ -199,10 +201,30 @@ export function validateMemberAccess(
     return null;
   }
 
+  // struct member access: look up member in struct registry
+  const unwrapped = receiverType.kind === "PointerType" ? receiverType.pointeeType : receiverType;
+  if (isStructType(unwrapped)) {
+    const structDecl = context.structs.get(unwrapped.name);
+    if (structDecl === undefined) {
+      context.errors.push({ line, col, message: `unknown struct '${unwrapped.name}'` });
+      return null;
+    }
+    const found = structDecl.members.find((m) => m.name === member);
+    if (found === undefined) {
+      context.errors.push({
+        line,
+        col,
+        message: `'${unwrapped.name}' has no member named '${member}'`,
+      });
+      return null;
+    }
+    return found.type;
+  }
+
   const ctx = makeCheckCtx(context, validateExpr, inferExprType);
   const result = dispatchMemberAccess(receiverType, member, line, col, ctx);
   if (result === "not_matched") {
-    context.errors.push({ line, col, message: "type mismatch: expected pair" });
+    context.errors.push({ line, col, message: "type mismatch: expected pair or struct" });
     return null;
   }
   return result;

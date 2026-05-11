@@ -144,7 +144,7 @@ int main() {
     expect(result.output.stdout).toBe("0\n2\n4\n6\n8\n");
   });
 
-  it("vector passed to function", () => {
+  it("vector passed to function by value (no side effects on caller)", () => {
     const source = `
 void fillVector(vector<int> v, int size, int value) {
   for (int i = 0; i < size; i++) {
@@ -156,15 +156,12 @@ int main() {
   vector<int> v;
   fillVector(v, 3, 7);
   cout << v.size() << "\\n";
-  for (int i = 0; i < v.size(); i++) {
-    cout << v[i] << "\\n";
-  }
   return 0;
 }
 `;
     const result = compileAndRun(source);
     expect(result.status).toBe("done");
-    expect(result.output.stdout).toBe("3\n7\n7\n7\n");
+    expect(result.output.stdout).toBe("0\n");
   });
 
   it("vector of strings", () => {

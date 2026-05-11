@@ -56,9 +56,16 @@ export function evaluateMemberAccess(
   ctx: EvalCtx,
 ): RuntimeValue {
   const receiver = ctx.evaluateExpr(receiverExpr);
+  if (receiver.kind === "object" && receiver.objectKind === "struct") {
+    const fieldValue = receiver.fields.get(member);
+    if (fieldValue === undefined) {
+      return ctx.fail(`'${receiver.type.name}' has no member named '${member}'`, line);
+    }
+    return fieldValue;
+  }
   return (
     dispatchStdlibMemberAccess(receiver, member, line, ctx) ??
-    ctx.fail("type mismatch: expected pair", line)
+    ctx.fail("type mismatch: expected pair or struct", line)
   );
 }
 
