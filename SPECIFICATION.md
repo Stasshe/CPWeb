@@ -29,7 +29,8 @@
 プリプロセッサの対応範囲：
 - `#include <bits/stdc++.h>`、`<iostream>`、`<vector>`、`<map>`、`<algorithm>`、`<functional>`、`<iomanip>`、`<utility>`、`<tuple>` を受理（no-op として処理）
 - `#define` はオブジェクト形式マクロ（`#define PI 3.14`）および関数形式マクロ（`#define rep(i,n) for(int i=0;i<n;i++)`）の両方に対応する
-- `using T = X;` 型エイリアスおよびトップレベルの `const T x = v;` は定数マクロとして展開する
+- `using T = X;` 型エイリアスはパーサーで処理する（グローバルスコープおよび関数内で有効）
+- `const` 修飾子はパーサーで受理するが、const 違反（再代入）の検査は行わない。整数リテラルで初期化された `const int` / `const long long` 変数はコンパイル時に配列サイズとして使用できる
 - 条件付きディレクティブ（`#if`, `#ifdef` 等）は非対応
   
 ---
@@ -99,7 +100,7 @@ int b[10] = {1, 2};  // 部分初期化（残りはゼロ）
 int c[2][3];         // 多次元固定長配列
 ```
 
-- サイズは整数リテラルのみ（定数変数は将来対応）
+- サイズは整数リテラル、または整数リテラルで初期化された `const int` / `const long long` 変数を指定できる（例：`const int MAXN = 100005; int a[MAXN];`）
 - 宣言スコープに応じてローカル／グローバルどちらでも使用可能
 - 多次元配列は `a[i][j]` のように通常の添字でアクセスできる
 - 初期化子は平坦化した `{1, 2, 3, ...}` 形式のみ対応する
@@ -478,13 +479,15 @@ int main() {
 ```cpp
 cin >> a;
 cin >> n >> m;
-cin >> s;          // string（空白区切りで1トークン）
+cin >> s;                          // string（空白区切りで1トークン）
+cin >> a[i], q[a[i]] += a[i];     // >> チェーンの後にカンマで式を続けられる
 ```
 
 - `int`、`long long`、`bool`、`string` 型変数への入力に対応
 - `double` 型変数への入力にも対応
 - `bool` 入力は `0` / `1` のみ対応
 - 配列要素・vector 要素・`string` 添字への直接入力も可：`cin >> a[i]`, `cin >> v[i]`, `cin >> s[i]`
+- `>>` チェーンの後にカンマ区切りの式を続けられる（`cin >> a[i], expr;`）。式は入力後に左から順に評価される
 - `using namespace std;` は書いてもよい。意味的には無視される
 - `cin` / `cout` / `cerr` / `endl` は `using namespace std;` がなくても直接使える
 - `ios::sync_with_stdio(false);`、`ios_base::sync_with_stdio(false);`、`cin.tie(nullptr);`、`cout.tie(nullptr);`、`cerr.tie(nullptr);` は競プロ互換の no-op として受理する
@@ -760,10 +763,11 @@ type DebugInfo = {
 
 ```ebnf
 (* プリプロセッサ（#include / #define）はパース前に処理済み。EBNF には現れない *)
-program       = { using_namespace_std } { global_decl } { function } ;
+program       = { using_decl } { global_decl } { function } ;
 
-(* using namespace std; のみ受理。型エイリアス（using T = X;）はマクロ展開で処理 *)
+using_decl    = using_namespace_std | using_type_alias ;
 using_namespace_std = "using" "namespace" "std" ";" ;
+using_type_alias = "using" ident "=" type ";" ;
 
 (* グローバル宣言：プリミティブ変数・固定長配列・vector を許可 *)
 global_decl   = var_decl | array_decl | vector_decl ;
@@ -778,11 +782,13 @@ param_list    = [ param { "," param } ] ;
 param         = type declarator ;
 
 (* 型 *)
-type          = primitive_type
+type          = [ "const" ] ( primitive_type
+              | type_alias_name
               | "vector" "<" type ">"
               | "pair" "<" type "," type ">"
-              | "tuple" "<" type { "," type } ">" ;
+              | "tuple" "<" type { "," type } ">" ) ;
 primitive_type = "int" | "long long" | "double" | "bool" | "char" | "string" | "void" ;
+type_alias_name = ident ;   (* using T = X; で定義されたエイリアス *)
 declarator    = { "*" } [ "&" ] ident { "[" [ int_lit ] "]" } ;
 
 (* 文 *)
@@ -792,6 +798,7 @@ statement     = var_decl
               | array_decl
               | vector_decl
               | decl_group_stmt
+              | using_decl
               | io_stmt
               | if_stmt
               | for_stmt
@@ -807,7 +814,8 @@ decl_group_stmt = type decl_item "," decl_item { "," decl_item } ";" ;
 decl_item     = var_item | array_item | vector_item ;
 var_item      = ident [ "=" expr ] ;
 array_decl    = type array_item { "," array_item } ";" ;
-array_item    = ident "[" int_lit "]" [ "=" "{" [ expr_list ] "}" ] ;
+array_item    = ident "[" array_size "]" [ "=" "{" [ expr_list ] "}" ] ;
+array_size    = int_lit | ident ;   (* ident は const int/long long で整数リテラル初期化されたものに限る *)
 vector_decl   = "vector" "<" type ">" vector_item { "," vector_item } ";" ;
 vector_item   = ident [ "(" [ expr [ "," expr ] ] ")" ] ;
 
@@ -832,7 +840,7 @@ expr_stmt     = expr ";" ;
 
 (* 入出力 *)
 io_stmt       = cin_stmt | cout_stmt | cerr_stmt ;
-cin_stmt      = "cin" { ">>" lvalue } ";" ;
+cin_stmt      = "cin" { ">>" lvalue } { "," expr } ";" ;
 cout_stmt     = "cout" { "<<" expr } ";" ;
 cerr_stmt     = "cerr" { "<<" expr } ";" ;
 
@@ -981,7 +989,9 @@ type LiteralExprNode = {
 - 限定的な関数テンプレート（`template<typename T> ...` + 型推論 / 明示テンプレート実引数呼び出し）
 - `if` / `for` / range-based `for`（配列・`vector`・`map`・`string`）/ `while` / `break` / `continue`
 - 関数定義・再帰・グローバル変数
-- `cin` / `cout` / `cerr` / `endl`
+- `cin` / `cout` / `cerr` / `endl`（`cin >> a, expr` 形式の trailing 式も対応）
+- `using T = X;` 型エイリアス（グローバル・関数内スコープ）
+- `const` 修飾子（パーサーで受理。整数リテラル初期化の `const int/long long` は配列サイズに使用可）
 - `abs` / `max` / `min` / `swap` / `sort` / `reverse` / `fill`
 - `DebugSession` による `stepInto` / `stepOver` / `stepOut` / `run` / ブレークポイント
 
@@ -990,7 +1000,7 @@ type LiteralExprNode = {
 - クラステンプレート、変数テンプレート
 - 部分特殊化、明示特殊化、オーバーロード解決
 - `struct` / `class`
-- `using T = X;` 型エイリアス（`using namespace std;` のみ対応）
+- `const` 違反（再代入）の静的検査
 - 一般の `auto` 変数宣言、構造化束縛
 - 参照戻り値
 - 固定長配列への `sort(a, a + n)`
